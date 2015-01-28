@@ -1,8 +1,9 @@
-# Chapter 1&2 - Lexer and Parser
+# Chapter 3 - Code generation to LLVM IR
 
 from collections import namedtuple
 from enum import Enum
 
+import llvmlite.ir as ir
 
 # Each token is a tuple of kind and value. kind is one of the enumeration values
 # in TokenKind. value is the textual value of the token in the input.
@@ -30,7 +31,7 @@ class Lexer(object):
         self.buf = buf
         self.pos = 0
         self.lastchar = self.buf[0]
-    
+
     def tokens(self):
         while self.lastchar:
             # Skip whitespace
@@ -137,7 +138,7 @@ class PrototypeAST(ASTNode):
     def dump(self, indent=0):
         return '{0}{1}[{2}]'.format(
             ' ' * indent, self.__class__.__name__, ', '.join(self.argnames))
-    
+
 
 class FunctionAST(ASTNode):
     def __init__(self, proto, body):
@@ -198,7 +199,7 @@ class Parser(object):
         # If followed by a '(' it's a call; otherwise, a simple variable ref.
         if not self._cur_tok_is_operator('('):
             return VariableExprAST(id_name)
-        
+
         self._get_next_token()
         args = []
         if not self._cur_tok_is_operator(')'):
@@ -317,136 +318,88 @@ class Parser(object):
         expr = self._parse_expression()
         # Anonymous function
         return FunctionAST(PrototypeAST('', []), expr)
-        
-
-#---- Some unit tests ----#
-
-import unittest
-
-class TestLexer(unittest.TestCase):
-    def _assert_toks(self, toks, kinds):
-        """Assert that the list of toks has the given kinds."""
-        self.assertEqual([t.kind.name for t in toks], kinds)
-
-    def test_lexer_simple_tokens_and_values(self):
-        l = Lexer('a+1')
-        toks = list(l.tokens())
-        self.assertEqual(toks[0], Token(TokenKind.IDENTIFIER, 'a'))
-        self.assertEqual(toks[1], Token(TokenKind.OPERATOR, '+'))
-        self.assertEqual(toks[2], Token(TokenKind.NUMBER, '1'))
-        self.assertEqual(toks[3], Token(TokenKind.EOF, ''))
-
-        l = Lexer('.1519')
-        toks = list(l.tokens())
-        self.assertEqual(toks[0], Token(TokenKind.NUMBER, '.1519'))
-
-    def test_token_kinds(self):
-        l = Lexer('10.1 def der extern foo (')
-        self._assert_toks(
-            list(l.tokens()), 
-            ['NUMBER', 'DEF', 'IDENTIFIER', 'EXTERN', 'IDENTIFIER',
-             'OPERATOR', 'EOF'])
-
-        l = Lexer('+- 1 2 22 22.4 a b2 C3d')
-        self._assert_toks(
-            list(l.tokens()), 
-            ['OPERATOR', 'OPERATOR', 'NUMBER', 'NUMBER', 'NUMBER', 'NUMBER',
-             'IDENTIFIER', 'IDENTIFIER', 'IDENTIFIER', 'EOF'])
-
-    def test_skip_whitespace_comments(self):
-        l = Lexer('''
-            def foo # this is a comment
-            # another comment
-            \t\t\t10
-            ''')
-        self._assert_toks(
-            list(l.tokens()), 
-            ['DEF', 'IDENTIFIER', 'NUMBER', 'EOF'])
 
 
-class TestParser(unittest.TestCase):
-    def _flatten(self, ast):
-        """Test helper - flattens the AST into a sexpr-like nested list."""
-        if isinstance(ast, NumberExprAST):
-            return ['Number', ast.val]
-        elif isinstance(ast, VariableExprAST):
-            return ['Variable', ast.name]
-        elif isinstance(ast, BinaryExprAST):
-            return ['Binop', ast.op,
-                    self._flatten(ast.lhs), self._flatten(ast.rhs)]
-        elif isinstance(ast, CallExprAST):
-            args = [self._flatten(arg) for arg in ast.args]
-            return ['Call', ast.callee, args]
-        elif isinstance(ast, PrototypeAST):
-            return ['Proto', ast.name, ' '.join(ast.argnames)]
-        elif isinstance(ast, FunctionAST):
-            return ['Function',
-                    self._flatten(ast.proto), self._flatten(ast.body)]
+class CodegenError(Exception): pass
+
+
+class LLVMCodeGenerator(object):
+    def __init__(self):
+        """Initialize the code generator.
+
+        This creates a new LLVM module into which code is generated. The
+        generate_code() method can be called multiple times. It adds the code
+        generated for this node into the module, and returns the module.
+        """
+        self.module = ir.Module()
+
+        # Current IR builder.
+        self.builder = None
+
+        # Manages a symbol table while a function is being codegen'd. Maps var
+        # names to ir.Value.
+        self.func_symtab = {}
+
+    def generate_code(self, node):
+        assert isinstance(node, (PrototypeAST, FunctionAST))
+        self._codegen(node)
+        return self.module
+
+    def _codegen(self, node):
+        """Node visitor. Dispathces upon node type.
+
+        For AST node of class Foo, calls self._codegen_Foo. Each visitor is
+        expected to return a llvmlite.ir.Value.
+        """
+        method = 'visit_' + node.__class__.__name__
+        return getattr(self, method)(node)
+
+    def _codegen_NumberExprAST(self, node):
+        return self.builder.constant(ir.DoubleType(), float(node.val))
+
+    def _codegen_VariableExprAST(self, node):
+        return self.symtab[node.name]
+
+    def _codegen_PrototypeAST(self, node):
+        # Create a function type
+        func_ty = ir.FunctionType(ir.DoubleType(),
+                                  [ir.DoubleType() * len(node.argnames)])
+
+        # If a function with this name already exists in the module...
+        if node.name in self.module.globals:
+            # We only allow the case in which a declaration exists and now the
+            # function is defined (or redeclared) with the same number of args.
+            existing_func = self.module[node.name]
+            if not isinstance(existing_func, ir.Function):
+                raise CodegenError('Function/Global name collision', node.name)
+            if not existing_func.is_declaration():
+                raise CodegenError('Redifinition of {0}'.format(node.name))
+            if len(existing_func.function_type.args) != len(func_ty.args):
+                raise CodegenError(
+                    'Redifinition with different number of arguments')
+            func = self.module.globals[node.name]
         else:
-            raise TypeError('unknown type in _flatten: {0}'.format(type(ast)))
+            # Otherwise create a new function
+            func = ir.Function(self.module, func_ty, node.name)
+        # Set function argument names from AST
+        for i in range(len(func.args)):
+            func.args[i].name = node.argnames[i]
+        return func
 
-    def _assert_body(self, toplevel, expected):
-        """Assert the flattened body of the given toplevel function"""
-        self.assertIsInstance(toplevel, FunctionAST)
-        self.assertEqual(self._flatten(toplevel.body), expected)
+    def _codegen_FunctionAST(self, node):
+        # Create the function skeleton from the prototype.
+        func = self._codegen(node.proto)
+        # Create the entry BB in the function and set the builder to it.
+        bb_entry = func.append_basic_block('entry')
+        self.builder = ir.IRBuilder(bb_entry)
 
-    def test_basic(self):
-        p = Parser('2')
-        ast = p.parse_toplevel()
-        self.assertIsInstance(ast, FunctionAST)
-        self.assertIsInstance(ast.body, NumberExprAST)
-        self.assertEqual(ast.body.val, '2')
-
-    def test_basic_with_flattening(self):
-        ast = Parser('2').parse_toplevel()
-        self._assert_body(ast, ['Number', '2'])
-
-        ast = Parser('foobar').parse_toplevel()
-        self._assert_body(ast, ['Variable', 'foobar'])
-
-    def test_expr_singleprec(self):
-        ast = Parser('2+ 3-4').parse_toplevel()
-        self._assert_body(ast,
-            ['Binop',
-                '-', ['Binop', '+', ['Number', '2'], ['Number', '3']],
-                ['Number', '4']])
-
-    def test_expr_multiprec(self):
-        ast = Parser('2+3*4-9').parse_toplevel()
-        self._assert_body(ast,
-            ['Binop', '-',
-                ['Binop', '+',
-                    ['Number', '2'],
-                    ['Binop', '*', ['Number', '3'], ['Number', '4']]],
-                ['Number', '9']])
-
-    def test_expr_parens(self):
-        ast = Parser('2*(3-4)*7').parse_toplevel()
-        self._assert_body(ast,
-            ['Binop', '*',
-                ['Binop', '*',
-                    ['Number', '2'],
-                    ['Binop', '-', ['Number', '3'], ['Number', '4']]],
-                ['Number', '7']])
-
-    def test_externals(self):
-        ast = Parser('extern sin(arg)').parse_toplevel()
-        self.assertEqual(self._flatten(ast), ['Proto', 'sin', 'arg'])
-
-        ast = Parser('extern Foobar(nom denom abom)').parse_toplevel()
-        self.assertEqual(self._flatten(ast),
-            ['Proto', 'Foobar', 'nom denom abom'])
-
-    def test_funcdef(self):
-        ast = Parser('def foo(x) 1 + bar(x)').parse_toplevel()
-        self.assertEqual(self._flatten(ast),
-            ['Function', ['Proto', 'foo', 'x'],
-                ['Binop', '+',
-                    ['Number', '1'],
-                    ['Call', 'bar', [['Variable', 'x']]]]])
+        # We're going to generate the function body now. Reset the symbol table.
+        self.func_symtab = {}
+        retval = self._codegen(node.body)
+        irbuilder.ret(retval)
+        return func
 
 
 if __name__ == '__main__':
-    buf = '''2+3*fob(12, kwa)-.12'''
-    #p = Parser(buf)
-    #print(p.parse_toplevel().dump())
+    pass
+
