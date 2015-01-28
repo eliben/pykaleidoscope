@@ -195,7 +195,6 @@ class Parser(object):
     def _parse_identifier_expr(self):
         id_name = self.cur_tok.value
         self._get_next_token()
-        print('* _parse_identifier_expr:', self.cur_tok)
         # If followed by a '(' it's a call; otherwise, a simple variable ref.
         if not self._cur_tok_is_operator('('):
             return VariableExprAST(id_name)
@@ -252,7 +251,6 @@ class Parser(object):
         """
         while True:
             cur_prec = self._cur_tok_precedence()
-            print('* _parse_binop_rhs', self.cur_tok, '  --> prec=', cur_prec)
             # If this is a binary operator with precedence lower than the
             # currently parsed sub-expression, bail out. If it binds at least
             # as tightly, keep going.
@@ -262,7 +260,6 @@ class Parser(object):
                 return lhs
             op = self.cur_tok.value
             self._get_next_token()  # consume the operator
-            print('    after consume op:', self.cur_tok)
             rhs = self._parse_primary()
 
             next_prec = self._cur_tok_precedence()
@@ -280,9 +277,7 @@ class Parser(object):
 
     # expression ::= primary binoprhs
     def _parse_expression(self):
-        print('* _parse_expression:', self.cur_tok)
         lhs = self._parse_primary()
-        print('    after lhs:', self.cur_tok)
         # Start with precedence 0 because we want to bind any operator to the
         # expression at this point.
         return self._parse_binop_rhs(0, lhs)
@@ -383,7 +378,7 @@ class TestParser(unittest.TestCase):
             args = [self._flatten(arg) for arg in ast.args]
             return ['Call', ast.callee, args]
         elif isinstance(ast, PrototypeAST):
-            return ['Proto', ast.name, ', '.join(ast.argnames)]
+            return ['Proto', ast.name, ' '.join(ast.argnames)]
         elif isinstance(ast, FunctionAST):
             return ['Function',
                     self._flatten(ast.proto), self._flatten(ast.body)]
@@ -405,8 +400,50 @@ class TestParser(unittest.TestCase):
     def test_basic_with_flattening(self):
         ast = Parser('2').parse_toplevel()
         self._assert_body(ast, ['Number', '2'])
+
         ast = Parser('foobar').parse_toplevel()
         self._assert_body(ast, ['Variable', 'foobar'])
+
+    def test_expr_singleprec(self):
+        ast = Parser('2+ 3-4').parse_toplevel()
+        self._assert_body(ast,
+            ['Binop',
+                '-', ['Binop', '+', ['Number', '2'], ['Number', '3']],
+                ['Number', '4']])
+
+    def test_expr_multiprec(self):
+        ast = Parser('2+3*4-9').parse_toplevel()
+        self._assert_body(ast,
+            ['Binop', '-',
+                ['Binop', '+',
+                    ['Number', '2'],
+                    ['Binop', '*', ['Number', '3'], ['Number', '4']]],
+                ['Number', '9']])
+
+    def test_expr_parens(self):
+        ast = Parser('2*(3-4)*7').parse_toplevel()
+        self._assert_body(ast,
+            ['Binop', '*',
+                ['Binop', '*',
+                    ['Number', '2'],
+                    ['Binop', '-', ['Number', '3'], ['Number', '4']]],
+                ['Number', '7']])
+
+    def test_externals(self):
+        ast = Parser('extern sin(arg)').parse_toplevel()
+        self.assertEqual(self._flatten(ast), ['Proto', 'sin', 'arg'])
+
+        ast = Parser('extern Foobar(nom denom abom)').parse_toplevel()
+        self.assertEqual(self._flatten(ast),
+            ['Proto', 'Foobar', 'nom denom abom'])
+
+    def test_funcdef(self):
+        ast = Parser('def foo(x) 1 + bar(x)').parse_toplevel()
+        self.assertEqual(self._flatten(ast),
+            ['Function', ['Proto', 'foo', 'x'],
+                ['Binop', '+',
+                    ['Number', '1'],
+                    ['Call', 'bar', [['Variable', 'x']]]]])
 
 
 if __name__ == '__main__':
