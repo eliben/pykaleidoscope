@@ -438,6 +438,32 @@ class LLVMCodeGenerator(object):
         else:
             raise CodegenError('Unknown binary operator', node.op)
 
+    def _codegen_IfExprAST(self, node):
+        # Emit comparison value
+        cond_val = self._codegen(node.cond_expr)
+        cmp = self.builder.fcmp_ordered(
+            '!=', cond_val, self.builder.constant(ir.DoubleType(), 0.0))
+
+        # Create basic blocks to express the control flow, with a conditional
+        # branch to either then_bb or else_bb depending on cmp.
+        then_bb = self.builder.function.append_basic_block('then')
+        else_bb = self.builder.function.append_basic_block('else')
+        merge_bb = self.builder.function.append_basic_block('ifcont')
+        self.builder.cbranch(cmp, then_bb, else_bb)
+
+        # Emit the 'then' part
+        self.builder.position_at_start(then_bb)
+        then_val = self._codegen(node.then_expr)
+        self.builder.branch(merge_bb)
+        
+        # Emission of then_val could have modified the current basic block. To
+        # properly set up the PHI, remember which block the 'then' part ends in.
+        then_bb = self.builder.block
+
+        # Emit the 'else' part
+
+
+        
     def _codegen_CallExprAST(self, node):
         callee_func = self.module.globals.get(node.callee, None)
         if callee_func is None or not isinstance(callee_func, ir.Function):
