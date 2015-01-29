@@ -446,6 +446,13 @@ class LLVMCodeGenerator(object):
 
 
 class KaleidoscopeEvaluator(object):
+    """Evaluator for Kaleidoscope expressions.
+
+    Once an object is created, calls to evaluate() add new expressions to the
+    module. Definitions (including externs) are only added into the IR - no
+    JIT compilation occurs. When a toplevel expression is evaluated, the whole
+    module is JITed and the result of the expression is returned.
+    """
     def __init__(self):
         llvm.initialize()
         llvm.initialize_native_target()
@@ -456,6 +463,11 @@ class KaleidoscopeEvaluator(object):
         self.target = llvm.Target.from_default_triple()
  
     def evaluate(self, codestr, optimize=True, llvmdump=False):
+        """Evaluate code in codestr.
+
+        Returns None for definitions and externs, and the evaluated expression
+        value for toplevel expressions.
+        """
         # Parse the given code and generate code from it
         ast = Parser(codestr).parse_toplevel()
         self.codegen.generate_code(ast)
@@ -529,8 +541,7 @@ class TestEvaluator(unittest.TestCase):
 
 if __name__ == '__main__':
     kalei = KaleidoscopeEvaluator()
-    #print(kalei.evaluate('def adder(a b) a + b'))
-    #print(kalei.evaluate('def foo(x) (1+2+x)*(x+(1+2))'))
-    #kalei.evaluate('extern cos(x)')
-    print(kalei.evaluate('3', optimize=True, llvmdump=True))
-    print(kalei.evaluate('3+3*4', optimize=True, llvmdump=True))
+    print(kalei.evaluate('def adder(a b) a + b'))
+    print(kalei.evaluate('def foo(x) (1+2+x)*(x+(1+2))'))
+    print(kalei.evaluate('foo(3)', optimize=True, llvmdump=True))
+    print(kalei.evaluate('foo(adder(3, 3)*4)', optimize=True, llvmdump=True))

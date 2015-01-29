@@ -448,5 +448,6 @@ class TestParser(unittest.TestCase):
 
 if __name__ == '__main__':
     buf = '''2+3*fob(12, kwa)-.12'''
-    #p = Parser(buf)
-    #print(p.parse_toplevel().dump())
+    print('Parsing:', buf)
+    p = Parser(buf)
+    print(p.parse_toplevel().dump())
