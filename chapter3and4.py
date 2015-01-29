@@ -1,4 +1,4 @@
-# Chapter 3 - Code generation to LLVM IR
+# Chapter 3 & 4 - Code generation to LLVM IR, JIT and optimizer support
 
 from collections import namedtuple
 from ctypes import CFUNCTYPE, c_double
@@ -454,7 +454,6 @@ class KaleidoscopeEvaluator(object):
         self.codegen = LLVMCodeGenerator()
 
         self.target = llvm.Target.from_default_triple()
-        self.target_machine = self.target.create_target_machine()
  
     def evaluate(self, codestr, optimize=True, llvmdump=False):
         # Parse the given code and generate code from it
@@ -487,12 +486,16 @@ class KaleidoscopeEvaluator(object):
                 print('======== Optimized LLVM IR')
                 print(str(llvmmod))
 
-        with llvm.create_mcjit_compiler(llvmmod, self.target_machine) as ee:
+        # Create a MCJIT execution engine to JIT-compile the module. Note that
+        # ee takes ownership of target_machine, so it has to be recreated anew
+        # each time we call create_mcjit_compiler.
+        target_machine = self.target.create_target_machine()
+        with llvm.create_mcjit_compiler(llvmmod, target_machine) as ee:
             ee.finalize_object()
 
             if llvmdump:
                 print('======== Machine code')
-                print(self.target_machine.emit_assembly(llvmmod))
+                print(target_machine.emit_assembly(llvmmod))
 
             func = llvmmod.get_function(ast.proto.name)
             fptr = CFUNCTYPE(c_double)(ee.get_pointer_to_function(func))
@@ -500,28 +503,34 @@ class KaleidoscopeEvaluator(object):
             result = fptr()
             return result
 
+#---- Some unit tests ----#
+
+import unittest
+
+class TestEvaluator(unittest.TestCase):
+    def test_basic(self):
+        e = KaleidoscopeEvaluator()
+        self.assertEqual(e.evaluate('3'), 3.0)
+        self.assertEqual(e.evaluate('3+3*4'), 15.0)
+
+    def test_use_func(self):
+        e = KaleidoscopeEvaluator()
+        self.assertIsNone(e.evaluate('def adder(x y) x+y'))
+        self.assertEqual(e.evaluate('adder(5, 4) + adder(3, 2)'), 14.0)
+
+    def test_use_libc(self):
+        e = KaleidoscopeEvaluator()
+        self.assertIsNone(e.evaluate('extern ceil(x)'))
+        self.assertEqual(e.evaluate('ceil(4.5)'), 5.0)
+        self.assertIsNone(e.evaluate('extern floor(x)'))
+        self.assertIsNone(e.evaluate('def cfadder(x) ceil(x) + floor(x)'))
+        self.assertEqual(e.evaluate('cfadder(3.14)'), 7.0)
+
 
 if __name__ == '__main__':
-    #def parse(s):
-        #return Parser(s).parse_toplevel()
-
-    #dfoo = parse('def foo(a b) a + 4.1414 * (b < a)')
-    #dcos = parse('extern cos(a)')
-    #dcl = parse('2 + foo(3.14, cos(9.91))')
-    #dcl2 = parse('3 + foo(3.14, cos(9.91))')
-
-    #cg = LLVMCodeGenerator()
-    #cg.generate_code(dfoo)
-    #cg.generate_code(dcos)
-    #cg.generate_code(dcl)
-    #cg.generate_code(dcl2)
-
-    #print(cg.module)
-
-    #llvmmod = llvm.parse_assembly(str(cg.module))
-    #llvmmod.verify()
-
     kalei = KaleidoscopeEvaluator()
-    print(kalei.evaluate('def adder(a b) a + b'))
-    print(kalei.evaluate('def foo(x) (1+2+x)*(x+(1+2))'))
-    print(kalei.evaluate('adder(foo(4), 5)', optimize=True, llvmdump=True))
+    #print(kalei.evaluate('def adder(a b) a + b'))
+    #print(kalei.evaluate('def foo(x) (1+2+x)*(x+(1+2))'))
+    #kalei.evaluate('extern cos(x)')
+    print(kalei.evaluate('3', optimize=True, llvmdump=True))
+    print(kalei.evaluate('3+3*4', optimize=True, llvmdump=True))
