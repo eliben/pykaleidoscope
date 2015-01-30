@@ -449,7 +449,5 @@ class TestParser(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    buf = '''2+3*fob(12, kwa)-.12'''
-    print('Parsing:', buf)
-    p = Parser(buf)
+    p = Parser('def bina(a b) a + b')
     print(p.parse_toplevel().dump())
