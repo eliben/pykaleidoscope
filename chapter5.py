@@ -524,6 +524,80 @@ class LLVMCodeGenerator(object):
         phi.add_incoming(else_val, else_bb)
         return phi
         
+    def _codegen_ForExprAST(self, node):
+        # Output this as:
+        #   ...
+        #   start = startexpr
+        #   goto loop
+        # loop:
+        #   variable = phi [start, loopheader], [nextvariable, loopend]
+        #   ...
+        #   bodyexpr
+        #   ...
+        # loopend:
+        #   step = stepexpr
+        #   nextvariable = variable + step
+        #   endcond = endexpr
+        #   br endcond, loop, endloop
+        # outloop:
+
+        # Emit the start expr first, without the variable in scope.
+        start_val = self._codegen(node.start_expr)
+        preheader_bb = self.builder.block
+        loop_bb = self.builder.function.append_basic_block('loop')
+
+        # Insert an explicit fall through from the current block to loop_bb
+        self.builder.branch(loop_bb)
+        self.builder.position_at_start(loop_bb)
+
+        # Start the PHI node with an entry for start
+        phi = self.builder.phi(ir.DoubleType(), node.id_name)
+        phi.add_incoming(start_val, preheader_bb)
+
+        # Within the loop, the variable is defined equal to the PHI node. If it
+        # shadows an existing variable, we have to restore it, so save it now.
+        oldval = self.func_symtab.get(node.id_name)
+        self.func_symtab[node.id_name] = phi
+
+        # Emit the body of the loop. This, like any other expr, can change the
+        # current BB. Note that we ignore the value computed by the body.
+        body_val = self._codegen(node.body)
+
+        if node.step_expr is None:
+            stepval = self.builder.constant(ir.DoubleType(), 1.0)
+        else:
+            stepval = self._codegen(node.step_expr)
+        nextvar = self.builder.fadd(phi, stepval, 'nextvar')
+
+        # Compute the end condition
+        endcond = self._codegen(node.end_expr)
+        cmp = self.builder.fcmp_ordered(
+            '!=', endcond, self.builder.constant(ir.DoubleType(), 0.0),
+            'loopcond')
+
+        # Create the 'after loop' block and insert it
+        loop_end_bb = self.builder.block
+        after_bb = self.builder.function.append_basic_block('afterloop')
+
+        # Insert the conditional branch into the end of loop_end_bb
+        self.builder.cbranch(cmp, loop_bb, after_bb)
+
+        # New code will be inserted into after_bb
+        self.builder.position_at_start(after_bb)
+
+        # Add a new entry to the PHI node for the backedge
+        phi.add_incoming(nextvar, loop_end_bb)
+
+        # Remove the loop variable from the symbol table; if it shadowed an
+        # existing variable, restore that.
+        if oldval is None:
+            del self.func_symtab[node.id_name]
+        else:
+            self.func_symtab[node.id_name] = oldval
+
+        # The 'for' expression always returns 0
+        return self.builder.constant(ir.DoubleType(), 0.0)
+
     def _codegen_CallExprAST(self, node):
         callee_func = self.module.globals.get(node.callee, None)
         if callee_func is None or not isinstance(callee_func, ir.Function):
@@ -668,14 +742,20 @@ class TestEvaluator(unittest.TestCase):
         self.assertEqual(e.evaluate('foo(10, 2, 300)'), 4)
         self.assertEqual(e.evaluate('foo(100, 2000, 30)'), 60)
     
+    def test_for(self):
+        # For doesn't return anything, so just make sure evaluating it doesn't
+        # crash.
+        e = KaleidoscopeEvaluator()
+        e.evaluate('''
+            def foo(a b c)
+                if a < b
+                    then for x = 1.0, x < b, c in x+a+c*b
+                    else c * 2''')
+        self.assertEqual(e.evaluate('foo(1, 2, 3)'), 0)
+        self.assertEqual(e.evaluate('foo(3, 2, 30)'), 60)
+
 
 if __name__ == '__main__':
-    #buf = 'def foo(a b) a * if a < b then if a < 3 then 10 else 3 + a else b'
-    buf = 'def foo(a b) for x = 1.1, x < b, a in x - b'
-    print(Parser(buf).parse_toplevel().dump())
-    #kalei = KaleidoscopeEvaluator()
-    #print(kalei.evaluate(buf))
-    #print(kalei.evaluate('foo(12, 5)', optimize=True, llvmdump=True))
-    #print(kalei.evaluate('def foo(x) (1+2+x)*(x+(1+2))'))
-    #print(kalei.evaluate('foo(3)', optimize=True, llvmdump=True))
-    #print(kalei.evaluate('foo(adder(3, 3)*4)', optimize=True, llvmdump=True))
+    kalei = KaleidoscopeEvaluator()
+    kalei.evaluate('def foo(a b x) for x = 68, x < b, a in x+a')
+    print(kalei.evaluate('foo(2, 79, 22)', optimize=True, llvmdump=True))
