@@ -45,6 +45,8 @@ class Lexer(object):
             'if':       TokenKind.IF,
             'then':     TokenKind.THEN,
             'else':     TokenKind.ELSE,
+            'for':      TokenKind.FOR,
+            'in':       TokenKind.IN,
         }
 
     def tokens(self):
@@ -149,7 +151,8 @@ class IfExprAST(ExprAST):
 
 
 class ForExprAST(ExprAST):
-    def __init__(self, start_expr, end_expr, step_expr, body):
+    def __init__(self, id_name, start_expr, end_expr, step_expr, body):
+        self.id_name = id_name
         self.start_expr = start_expr
         self.end_expr = end_expr
         self.step_expr = step_expr
@@ -157,15 +160,15 @@ class ForExprAST(ExprAST):
 
     def dump(self, indent=0):
         prefix = ' ' * indent
-        s = '{0}{1}\n'.format(prefix, self._class__.__name__)
-        s += '{0} Start:\n{1}\n'.format(
-            prefix. self.start_expr.dump(indent + 2))
+        s = '{0}{1}\n'.format(prefix, self.__class__.__name__)
+        s += '{0} Start [{1}]:\n{2}\n'.format(
+            prefix, self.id_name, self.start_expr.dump(indent + 2))
         s += '{0} End:\n{1}\n'.format(
-            prefix. self.end_expr.dump(indent + 2))
+            prefix, self.end_expr.dump(indent + 2))
         s += '{0} Step:\n{1}\n'.format(
-            prefix. self.step_expr.dump(indent + 2))
+            prefix, self.step_expr.dump(indent + 2))
         s += '{0} Body:\n{1}\n'.format(
-            prefix. self.body.dump(indent + 2))
+            prefix, self.body.dump(indent + 2))
         return s
 
 
@@ -334,8 +337,24 @@ class Parser(object):
         return IfExprAST(cond_expr, then_expr, else_expr)
         
     # forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expr
-    #def _parse_for_expr(self):
+    def _parse_for_expr(self):
+        self._get_next_token()  # consume the 'for'
+        id_name = self.cur_tok.value
+        self._match(TokenKind.IDENTIFIER)
+        self._match(TokenKind.OPERATOR, '=')
+        start_expr = self._parse_expression()
+        self._match(TokenKind.OPERATOR, ',')
+        end_expr = self._parse_expression()
 
+        # The step part is optional
+        if self._cur_tok_is_operator(','):
+            self._get_next_token()
+            step_expr = self._parse_expression()
+        else:
+            step_expr = None
+        self._match(TokenKind.IN)
+        body = self._parse_expression()
+        return ForExprAST(id_name, start_expr, end_expr, step_expr, body)
         
     # binoprhs ::= (<binop> primary)*
     def _parse_binop_rhs(self, expr_prec, lhs):
@@ -651,11 +670,12 @@ class TestEvaluator(unittest.TestCase):
     
 
 if __name__ == '__main__':
-    buf = 'def foo(a b) a * if a < b then if a < 3 then 10 else 3 + a else b'
+    #buf = 'def foo(a b) a * if a < b then if a < 3 then 10 else 3 + a else b'
+    buf = 'def foo(a b) for x = 1.1, x < b, a in x - b'
     print(Parser(buf).parse_toplevel().dump())
-    kalei = KaleidoscopeEvaluator()
-    print(kalei.evaluate(buf))
-    print(kalei.evaluate('foo(12, 5)', optimize=True, llvmdump=True))
+    #kalei = KaleidoscopeEvaluator()
+    #print(kalei.evaluate(buf))
+    #print(kalei.evaluate('foo(12, 5)', optimize=True, llvmdump=True))
     #print(kalei.evaluate('def foo(x) (1+2+x)*(x+(1+2))'))
     #print(kalei.evaluate('foo(3)', optimize=True, llvmdump=True))
     #print(kalei.evaluate('foo(adder(3, 3)*4)', optimize=True, llvmdump=True))
