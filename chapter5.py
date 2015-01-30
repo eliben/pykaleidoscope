@@ -663,6 +663,7 @@ class KaleidoscopeEvaluator(object):
         llvm.initialize_native_asmprinter()
 
         self.codegen = LLVMCodeGenerator()
+        self._add_builtins(self.codegen.module)
 
         self.target = llvm.Target.from_default_triple()
  
@@ -715,9 +716,27 @@ class KaleidoscopeEvaluator(object):
 
             func = llvmmod.get_function(ast.proto.name)
             fptr = CFUNCTYPE(c_double)(ee.get_pointer_to_function(func))
-
             result = fptr()
             return result
+
+    def _add_builtins(self, module):
+        # The C++ tutorial adds putchard() simply by defining it in the host C++
+        # code, which is then accessible to the JIT. It doesn't work as simply
+        # for us; but luckily it's very easy to define new "C level" functions
+        # for our JITed code to use - just emit them as LLVM IR. This is what
+        # this method does.
+
+        # Add the declaration of putchar
+        putchar_ty = ir.FunctionType(ir.IntType(32), [ir.IntType(32)])
+        putchar = ir.Function(module, putchar_ty, 'putchar')
+
+        # Add putchard
+        putchard_ty = ir.FunctionType(ir.DoubleType(), [ir.DoubleType()])
+        putchard = ir.Function(module, putchard_ty, 'putchard')
+        irbuilder = ir.IRBuilder(putchard.append_basic_block('entry'))
+        ival = irbuilder.fptoui(putchard.args[0], ir.IntType(32), 'intcast')
+        irbuilder.call(putchar, [ival])
+        irbuilder.ret(irbuilder.constant(ir.DoubleType(), 0))
 
 
 #---- Some unit tests ----#
@@ -757,5 +776,5 @@ class TestEvaluator(unittest.TestCase):
 
 if __name__ == '__main__':
     kalei = KaleidoscopeEvaluator()
-    kalei.evaluate('def foo(a b x) for x = 68, x < b, a in x+a')
-    print(kalei.evaluate('foo(2, 79, 22)', optimize=True, llvmdump=True))
+    kalei.evaluate('def foo(a b) for x = 65, x < a, b in putchard(x)')
+    print(kalei.evaluate('foo(79, 1)', optimize=True, llvmdump=True))
