@@ -245,13 +245,15 @@ class ParseError(Exception): pass
 
 
 class Parser(object):
-    def __init__(self, buf):
+    def __init__(self):
+        pass
+
+    # toplevel ::= definition | external | expression | ';'
+    def parse_toplevel(self, buf):
         self.token_generator = Lexer(buf).tokens()
         self.cur_tok = None
         self._get_next_token()
-
-    # toplevel ::= definition | external | expression | ';'
-    def parse_toplevel(self):
+        
         if self.cur_tok.kind == TokenKind.EXTERN:
             return self._parse_external()
         elif self.cur_tok.kind == TokenKind.DEF:
@@ -282,7 +284,7 @@ class Parser(object):
     def _cur_tok_precedence(self):
         """Get the operator precedence of the current token."""
         try:
-            return Parser._precedence_map[self.cur_tok.value]
+            return self._precedence_map[self.cur_tok.value]
         except KeyError:
             return -1
 
@@ -438,6 +440,10 @@ class Parser(object):
                     raise ParseError('Invalid precedence', prec)
                 self._get_next_token()
 
+            # Add the new operator to our precedence table so we can properly
+            # parse it.
+            self._precedence_map[name[-1]] = prec
+
         self._match(TokenKind.OPERATOR, '(')
         argnames = []
         while self.cur_tok.kind == TokenKind.IDENTIFIER:
@@ -525,7 +531,10 @@ class LLVMCodeGenerator(object):
             cmp = self.builder.fcmp_unordered('<', lhs, rhs, 'cmptmp')
             return self.builder.uitofp(cmp, ir.DoubleType(), 'booltmp')
         else:
-            raise CodegenError('Unknown binary operator', node.op)
+            # Note one of predefined operator, so it must be a user-defined one.
+            # Emit a call to it.
+            func = self.func_symtab['binary{0}'.format(node.op)]
+            return self.builder.call(func, [lhs, rhs], 'binop')
 
     def _codegen_IfExprAST(self, node):
         # Emit comparison value
@@ -683,6 +692,9 @@ class LLVMCodeGenerator(object):
         self.func_symtab = {}
         # Create the function skeleton from the prototype.
         func = self._codegen(node.proto)
+
+        
+
         # Create the entry BB in the function and set the builder to it.
         bb_entry = func.append_basic_block('entry')
         self.builder = ir.IRBuilder(bb_entry)
@@ -705,6 +717,7 @@ class KaleidoscopeEvaluator(object):
         llvm.initialize_native_asmprinter()
 
         self.codegen = LLVMCodeGenerator()
+        self.parser = Parser()
         self._add_builtins(self.codegen.module)
 
         self.target = llvm.Target.from_default_triple()
@@ -716,7 +729,7 @@ class KaleidoscopeEvaluator(object):
         value for toplevel expressions.
         """
         # Parse the given code and generate code from it
-        ast = Parser(codestr).parse_toplevel()
+        ast = self.parser.parse_toplevel(codestr)
         self.codegen.generate_code(ast)
         
         if llvmdump:
@@ -788,14 +801,16 @@ import unittest
 
 class TestParser(unittest.TestCase):
     def test_basic(self):
-        p = Parser('def binary% 77(a b) a + b')
-        ast = p.parse_toplevel()
+        ast = Parser().parse_toplevel('def binary% 77(a b) a + b')
         print(ast.dump())
         #self.assertIsInstance(ast, FunctionAST)
         #self.assertIsInstance(ast.body, NumberExprAST)
         #self.assertEqual(ast.body.val, '2')
 
 if __name__ == '__main__':
-    kalei = KaleidoscopeEvaluator()
-    kalei.evaluate('def foo(a b) for x = 65, x < a, b in putchard(x)')
-    print(kalei.evaluate('foo(79, 1)', optimize=True, llvmdump=True))
+    p = Parser()
+    print(p.parse_toplevel('def binary% 77(a b) a + b').dump())
+    print(p.parse_toplevel('def fra(x t) x % t').dump())
+    #kalei = KaleidoscopeEvaluator()
+    #kalei.evaluate('def foo(a b) for x = 65, x < a, b in putchard(x)')
+    #print(kalei.evaluate('foo(79, 1)', optimize=True, llvmdump=True))
