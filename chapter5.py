@@ -19,6 +19,8 @@ class TokenKind(Enum):
     IF = -7
     THEN = -8
     ELSE = -9
+    FOR = -10
+    IN = -11
 
 
 Token = namedtuple('Token', 'kind value')
@@ -146,6 +148,27 @@ class IfExprAST(ExprAST):
         return s
 
 
+class ForExprAST(ExprAST):
+    def __init__(self, start_expr, end_expr, step_expr, body):
+        self.start_expr = start_expr
+        self.end_expr = end_expr
+        self.step_expr = step_expr
+        self.body = body
+
+    def dump(self, indent=0):
+        prefix = ' ' * indent
+        s = '{0}{1}\n'.format(prefix, self._class__.__name__)
+        s += '{0} Start:\n{1}\n'.format(
+            prefix. self.start_expr.dump(indent + 2))
+        s += '{0} End:\n{1}\n'.format(
+            prefix. self.end_expr.dump(indent + 2))
+        s += '{0} Step:\n{1}\n'.format(
+            prefix. self.step_expr.dump(indent + 2))
+        s += '{0} Body:\n{1}\n'.format(
+            prefix. self.body.dump(indent + 2))
+        return s
+
+
 class CallExprAST(ExprAST):
     def __init__(self, callee, args):
         self.callee = callee
@@ -219,6 +242,18 @@ class Parser(object):
     def _get_next_token(self):
         self.cur_tok = next(self.token_generator)
 
+    def _match(self, expected_kind, expected_value=None):
+        """Consume the current token; verify that it's of the expected kind.
+
+        If expected_kind == TokenKind.OPERATOR, verify the operator's value.
+        """
+        if (expected_kind == TokenKind.OPERATOR and
+            not self._cur_tok_is_operator(expected_value)):
+            raise ParseError('Expected "{0}"'.format(expected_value))
+        elif expected_kind != self.cur_tok.kind:
+            raise ParseError('Expected "{0}"'.format(expected_kind))
+        self._get_next_token()
+
     _precedence_map = {'<': 10, '+': 20, '-': 20, '*': 40}
 
     def _cur_tok_precedence(self):
@@ -250,9 +285,7 @@ class Parser(object):
                 args.append(self._parse_expression())
                 if self._cur_tok_is_operator(')'):
                     break
-                if not self._cur_tok_is_operator(','):
-                    raise ParseError('Expected ")" or "," in argument list')
-                self._get_next_token()
+                self._match(TokenKind.OPERATOR, ',')
 
         self._get_next_token()  # consume the ')'
         return CallExprAST(id_name, args)
@@ -267,9 +300,7 @@ class Parser(object):
     def _parse_paren_expr(self):
         self._get_next_token()  # consume the '('
         expr = self._parse_expression()
-        if not self._cur_tok_is_operator(')'):
-            raise ParseError('Expected ")"')
-        self._get_next_token()  # consume the ')'
+        self._match(TokenKind.OPERATOR, ')')
         return expr
 
     # primary
@@ -277,6 +308,7 @@ class Parser(object):
     #   ::= numberexpr
     #   ::= parenexpr
     #   ::= ifexpr
+    #   ::= forexpr
     def _parse_primary(self):
         if self.cur_tok.kind == TokenKind.IDENTIFIER:
             return self._parse_identifier_expr()
@@ -286,6 +318,8 @@ class Parser(object):
             return self._parse_paren_expr()
         elif self.cur_tok.kind == TokenKind.IF:
             return self._parse_if_expr()
+        elif self.cur_tok.kind == TokenKind.FOR:
+            return self._parse_for_expr()
         else:
             raise ParseError('Unknown token when expecting an expression')
 
@@ -293,15 +327,15 @@ class Parser(object):
     def _parse_if_expr(self):
         self._get_next_token()  # consume the 'if'
         cond_expr = self._parse_expression()
-        if self.cur_tok.kind != TokenKind.THEN:
-            raise ParseError('Expected "then" in ifexpr')
-        self._get_next_token()  # consume the 'then'
+        self._match(TokenKind.THEN)
         then_expr = self._parse_expression()
-        if self.cur_tok.kind != TokenKind.ELSE:
-            raise ParseError('Expected "else" in ifexpr')
-        self._get_next_token()  # consume the 'else'
+        self._match(TokenKind.ELSE)
         else_expr = self._parse_expression()
         return IfExprAST(cond_expr, then_expr, else_expr)
+        
+    # forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expr
+    #def _parse_for_expr(self):
+
         
     # binoprhs ::= (<binop> primary)*
     def _parse_binop_rhs(self, expr_prec, lhs):
@@ -345,20 +379,14 @@ class Parser(object):
 
     # prototype ::= id '(' id* ')'
     def _parse_prototype(self):
-        if self.cur_tok.kind != TokenKind.IDENTIFIER:
-            raise ParseError('Expected function name in prototype')
         name = self.cur_tok.value
-        self._get_next_token()  # consume the name
-        if not self._cur_tok_is_operator('('):
-            raise ParseError('Expected "(" in prototype')
-        self._get_next_token()  # consume '('
+        self._match(TokenKind.IDENTIFIER)
+        self._match(TokenKind.OPERATOR, '(')
         argnames = []
         while self.cur_tok.kind == TokenKind.IDENTIFIER:
             argnames.append(self.cur_tok.value)
             self._get_next_token()
-        if not self._cur_tok_is_operator(')'):
-            raise ParseError('Expected ")" in prototype')
-        self._get_next_token()  # consume ')'
+        self._match(TokenKind.OPERATOR, ')')
         return PrototypeAST(name, argnames)
 
     # external ::= 'extern' prototype

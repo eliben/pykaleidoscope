@@ -30,7 +30,7 @@ class Lexer(object):
         self.buf = buf
         self.pos = 0
         self.lastchar = self.buf[0]
-    
+
     def tokens(self):
         while self.lastchar:
             # Skip whitespace
@@ -137,7 +137,7 @@ class PrototypeAST(ASTNode):
     def dump(self, indent=0):
         return '{0}{1}[{2}]'.format(
             ' ' * indent, self.__class__.__name__, ', '.join(self.argnames))
-    
+
 
 class FunctionAST(ASTNode):
     def __init__(self, proto, body):
@@ -175,6 +175,18 @@ class Parser(object):
     def _get_next_token(self):
         self.cur_tok = next(self.token_generator)
 
+    def _match(self, expected_kind, expected_value=None):
+        """Consume the current token; verify that it's of the expected kind.
+
+        If expected_kind == TokenKind.OPERATOR, verify the operator's value.
+        """
+        if (expected_kind == TokenKind.OPERATOR and
+            not self._cur_tok_is_operator(expected_value)):
+            raise ParseError('Expected "{0}"'.format(expected_value))
+        elif expected_kind != self.cur_tok.kind:
+            raise ParseError('Expected "{0}"'.format(expected_kind))
+        self._get_next_token()
+
     _precedence_map = {'<': 10, '+': 20, '-': 20, '*': 40}
 
     def _cur_tok_precedence(self):
@@ -198,7 +210,7 @@ class Parser(object):
         # If followed by a '(' it's a call; otherwise, a simple variable ref.
         if not self._cur_tok_is_operator('('):
             return VariableExprAST(id_name)
-        
+
         self._get_next_token()
         args = []
         if not self._cur_tok_is_operator(')'):
@@ -206,9 +218,7 @@ class Parser(object):
                 args.append(self._parse_expression())
                 if self._cur_tok_is_operator(')'):
                     break
-                if not self._cur_tok_is_operator(','):
-                    raise ParseError('Expected ")" or "," in argument list')
-                self._get_next_token()
+                self._match(TokenKind.OPERATOR, ',')
 
         self._get_next_token()  # consume the ')'
         return CallExprAST(id_name, args)
@@ -223,9 +233,7 @@ class Parser(object):
     def _parse_paren_expr(self):
         self._get_next_token()  # consume the '('
         expr = self._parse_expression()
-        if not self._cur_tok_is_operator(')'):
-            raise ParseError('Expected ")"')
-        self._get_next_token()  # consume the ')'
+        self._match(TokenKind.OPERATOR, ')')
         return expr
 
     # primary
@@ -284,20 +292,14 @@ class Parser(object):
 
     # prototype ::= id '(' id* ')'
     def _parse_prototype(self):
-        if self.cur_tok.kind != TokenKind.IDENTIFIER:
-            raise ParseError('Expected function name in prototype')
         name = self.cur_tok.value
-        self._get_next_token()  # consume the name
-        if not self._cur_tok_is_operator('('):
-            raise ParseError('Expected "(" in prototype')
-        self._get_next_token()  # consume '('
+        self._match(TokenKind.IDENTIFIER)
+        self._match(TokenKind.OPERATOR, '(')
         argnames = []
         while self.cur_tok.kind == TokenKind.IDENTIFIER:
             argnames.append(self.cur_tok.value)
             self._get_next_token()
-        if not self._cur_tok_is_operator(')'):
-            raise ParseError('Expected ")" in prototype')
-        self._get_next_token()  # consume ')'
+        self._match(TokenKind.OPERATOR, ')')
         return PrototypeAST(name, argnames)
 
     # external ::= 'extern' prototype
@@ -317,7 +319,7 @@ class Parser(object):
         expr = self._parse_expression()
         # Anonymous function
         return FunctionAST(PrototypeAST('', []), expr)
-        
+
 
 #---- Some unit tests ----#
 
@@ -343,13 +345,13 @@ class TestLexer(unittest.TestCase):
     def test_token_kinds(self):
         l = Lexer('10.1 def der extern foo (')
         self._assert_toks(
-            list(l.tokens()), 
+            list(l.tokens()),
             ['NUMBER', 'DEF', 'IDENTIFIER', 'EXTERN', 'IDENTIFIER',
              'OPERATOR', 'EOF'])
 
         l = Lexer('+- 1 2 22 22.4 a b2 C3d')
         self._assert_toks(
-            list(l.tokens()), 
+            list(l.tokens()),
             ['OPERATOR', 'OPERATOR', 'NUMBER', 'NUMBER', 'NUMBER', 'NUMBER',
              'IDENTIFIER', 'IDENTIFIER', 'IDENTIFIER', 'EOF'])
 
@@ -360,7 +362,7 @@ class TestLexer(unittest.TestCase):
             \t\t\t10
             ''')
         self._assert_toks(
-            list(l.tokens()), 
+            list(l.tokens()),
             ['DEF', 'IDENTIFIER', 'NUMBER', 'EOF'])
 
 

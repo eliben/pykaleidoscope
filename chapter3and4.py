@@ -160,7 +160,7 @@ class FunctionAST(ASTNode):
 
     def is_anonymous(self):
         return self.proto.name.startswith('_anon')
-        
+
     def dump(self, indent=0):
         s = '{0}{1}[{2}]\n'.format(
             ' ' * indent, self.__class__.__name__, self.proto.dump())
@@ -191,6 +191,18 @@ class Parser(object):
 
     def _get_next_token(self):
         self.cur_tok = next(self.token_generator)
+
+    def _match(self, expected_kind, expected_value=None):
+        """Consume the current token; verify that it's of the expected kind.
+
+        If expected_kind == TokenKind.OPERATOR, verify the operator's value.
+        """
+        if (expected_kind == TokenKind.OPERATOR and
+            not self._cur_tok_is_operator(expected_value)):
+            raise ParseError('Expected "{0}"'.format(expected_value))
+        elif expected_kind != self.cur_tok.kind:
+            raise ParseError('Expected "{0}"'.format(expected_kind))
+        self._get_next_token()
 
     _precedence_map = {'<': 10, '+': 20, '-': 20, '*': 40}
 
@@ -223,9 +235,7 @@ class Parser(object):
                 args.append(self._parse_expression())
                 if self._cur_tok_is_operator(')'):
                     break
-                if not self._cur_tok_is_operator(','):
-                    raise ParseError('Expected ")" or "," in argument list')
-                self._get_next_token()
+                self._match(TokenKind.OPERATOR, ',')
 
         self._get_next_token()  # consume the ')'
         return CallExprAST(id_name, args)
@@ -240,9 +250,7 @@ class Parser(object):
     def _parse_paren_expr(self):
         self._get_next_token()  # consume the '('
         expr = self._parse_expression()
-        if not self._cur_tok_is_operator(')'):
-            raise ParseError('Expected ")"')
-        self._get_next_token()  # consume the ')'
+        self._match(TokenKind.OPERATOR, ')')
         return expr
 
     # primary
@@ -301,20 +309,14 @@ class Parser(object):
 
     # prototype ::= id '(' id* ')'
     def _parse_prototype(self):
-        if self.cur_tok.kind != TokenKind.IDENTIFIER:
-            raise ParseError('Expected function name in prototype')
         name = self.cur_tok.value
-        self._get_next_token()  # consume the name
-        if not self._cur_tok_is_operator('('):
-            raise ParseError('Expected "(" in prototype')
-        self._get_next_token()  # consume '('
+        self._match(TokenKind.IDENTIFIER)
+        self._match(TokenKind.OPERATOR, '(')
         argnames = []
         while self.cur_tok.kind == TokenKind.IDENTIFIER:
             argnames.append(self.cur_tok.value)
             self._get_next_token()
-        if not self._cur_tok_is_operator(')'):
-            raise ParseError('Expected ")" in prototype')
-        self._get_next_token()  # consume ')'
+        self._match(TokenKind.OPERATOR, ')')
         return PrototypeAST(name, argnames)
 
     # external ::= 'extern' prototype
@@ -332,6 +334,7 @@ class Parser(object):
     # toplevel ::= expression
     def _parse_toplevel_expression(self):
         expr = self._parse_expression()
+        # Anonymous function
         return FunctionAST.create_anonymous(expr)
 
 
@@ -402,7 +405,7 @@ class LLVMCodeGenerator(object):
             raise CodegenError('Call argument length mismatch', node.callee)
         call_args = [self._codegen(arg) for arg in node.args]
         return self.builder.call(callee_func, call_args, 'calltmp')
-        
+
     def _codegen_PrototypeAST(self, node):
         funcname = node.name
         # Create a function type
@@ -461,7 +464,7 @@ class KaleidoscopeEvaluator(object):
         self.codegen = LLVMCodeGenerator()
 
         self.target = llvm.Target.from_default_triple()
- 
+
     def evaluate(self, codestr, optimize=True, llvmdump=False):
         """Evaluate code in codestr.
 
@@ -471,7 +474,7 @@ class KaleidoscopeEvaluator(object):
         # Parse the given code and generate code from it
         ast = Parser(codestr).parse_toplevel()
         self.codegen.generate_code(ast)
-        
+
         if llvmdump:
             print('======== Unoptimized LLVM IR')
             print(str(self.codegen.module))
