@@ -515,6 +515,7 @@ class KaleidoscopeEvaluator(object):
             result = fptr()
             return result
 
+
 #---- Some unit tests ----#
 
 import unittest

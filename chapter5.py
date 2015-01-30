@@ -445,10 +445,13 @@ class LLVMCodeGenerator(object):
             '!=', cond_val, self.builder.constant(ir.DoubleType(), 0.0))
 
         # Create basic blocks to express the control flow, with a conditional
-        # branch to either then_bb or else_bb depending on cmp.
+        # branch to either then_bb or else_bb depending on cmp. else_bb and
+        # merge_bb are not yet attached to the function's list of BBs because
+        # if a nested IfExpr is generated we want to have a reasonably nested
+        # order of BBs generated into the function.
         then_bb = self.builder.function.append_basic_block('then')
-        else_bb = self.builder.function.append_basic_block('else')
-        merge_bb = self.builder.function.append_basic_block('ifcont')
+        else_bb = ir.Block(self.builder.function, 'else')
+        merge_bb = ir.Block(self.builder.function, 'ifcont')
         self.builder.cbranch(cmp, then_bb, else_bb)
 
         # Emit the 'then' part
@@ -461,8 +464,18 @@ class LLVMCodeGenerator(object):
         then_bb = self.builder.block
 
         # Emit the 'else' part
+        self.builder.function.basic_blocks.append(else_bb)
+        self.builder.position_at_start(else_bb)
+        else_val = self._codegen(node.else_expr)
+        self.builder.branch(merge_bb)
 
-
+        # Emit the merge ('ifcnt') block
+        self.builder.function.basic_blocks.append(merge_bb)
+        self.builder.position_at_start(merge_bb)
+        phi = self.builder.phi(ir.DoubleType(), 'iftmp')
+        phi.add_incoming(then_val, then_bb)
+        phi.add_incoming(else_val, else_bb)
+        return phi
         
     def _codegen_CallExprAST(self, node):
         callee_func = self.module.globals.get(node.callee, None)
@@ -585,35 +598,36 @@ class KaleidoscopeEvaluator(object):
             result = fptr()
             return result
 
+
 #---- Some unit tests ----#
 
 import unittest
 
 class TestEvaluator(unittest.TestCase):
-    def test_basic(self):
+    def test_basic_if(self):
         e = KaleidoscopeEvaluator()
-        self.assertEqual(e.evaluate('3'), 3.0)
-        self.assertEqual(e.evaluate('3+3*4'), 15.0)
+        e.evaluate('def foo(a b) a * if a < b then a + 1 else b + 1')
+        self.assertEqual(e.evaluate('foo(3, 4)'), 12)
+        self.assertEqual(e.evaluate('foo(5, 4)'), 25)
 
-    def test_use_func(self):
+    def test_nested_if(self):
         e = KaleidoscopeEvaluator()
-        self.assertIsNone(e.evaluate('def adder(x y) x+y'))
-        self.assertEqual(e.evaluate('adder(5, 4) + adder(3, 2)'), 14.0)
-
-    def test_use_libc(self):
-        e = KaleidoscopeEvaluator()
-        self.assertIsNone(e.evaluate('extern ceil(x)'))
-        self.assertEqual(e.evaluate('ceil(4.5)'), 5.0)
-        self.assertIsNone(e.evaluate('extern floor(x)'))
-        self.assertIsNone(e.evaluate('def cfadder(x) ceil(x) + floor(x)'))
-        self.assertEqual(e.evaluate('cfadder(3.14)'), 7.0)
-
+        e.evaluate('''
+            def foo(a b c)
+                if a < b 
+                    then if a < c then a * 2 else c * 2
+                    else b * 2''')
+        self.assertEqual(e.evaluate('foo(1, 20, 300)'), 2)
+        self.assertEqual(e.evaluate('foo(10, 2, 300)'), 4)
+        self.assertEqual(e.evaluate('foo(100, 2000, 30)'), 60)
+    
 
 if __name__ == '__main__':
-    buf = 'def foo(a b) a * if a < b then 3 + a else b'
+    buf = 'def foo(a b) a * if a < b then if a < 3 then 10 else 3 + a else b'
     print(Parser(buf).parse_toplevel().dump())
-    #kalei = KaleidoscopeEvaluator()
-    #print(kalei.evaluate('def adder(a b) a + b'))
+    kalei = KaleidoscopeEvaluator()
+    print(kalei.evaluate(buf))
+    print(kalei.evaluate('foo(12, 5)', optimize=True, llvmdump=True))
     #print(kalei.evaluate('def foo(x) (1+2+x)*(x+(1+2))'))
     #print(kalei.evaluate('foo(3)', optimize=True, llvmdump=True))
     #print(kalei.evaluate('foo(adder(3, 3)*4)', optimize=True, llvmdump=True))
