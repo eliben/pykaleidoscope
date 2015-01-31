@@ -248,7 +248,8 @@ class ParseError(Exception): pass
 # chapters to conform to this one
 class Parser(object):
     def __init__(self):
-        pass
+        self.token_generator = None
+        self.cur_tok = None
 
     # toplevel ::= definition | external | expression | ';'
     def parse_toplevel(self, buf):
@@ -802,12 +803,75 @@ import unittest
 
 
 class TestParser(unittest.TestCase):
-    def test_basic(self):
+    def _flatten(self, ast):
+        """Test helper - flattens the AST into a sexpr-like nested list."""
+        if isinstance(ast, NumberExprAST):
+            return ['Number', ast.val]
+        elif isinstance(ast, VariableExprAST):
+            return ['Variable', ast.name]
+        elif isinstance(ast, BinaryExprAST):
+            return ['Binop', ast.op,
+                    self._flatten(ast.lhs), self._flatten(ast.rhs)]
+        elif isinstance(ast, CallExprAST):
+            args = [self._flatten(arg) for arg in ast.args]
+            return ['Call', ast.callee, args]
+        elif isinstance(ast, PrototypeAST):
+            return ['Proto', ast.name, ' '.join(ast.argnames)]
+        elif isinstance(ast, FunctionAST):
+            return ['Function',
+                    self._flatten(ast.proto), self._flatten(ast.body)]
+        else:
+            raise TypeError('unknown type in _flatten: {0}'.format(type(ast)))
+
+    def _assert_body(self, toplevel, expected):
+        """Assert the flattened body of the given toplevel function"""
+        self.assertIsInstance(toplevel, FunctionAST)
+        self.assertEqual(self._flatten(toplevel.body), expected)
+
+    def test_binary_op_with_prec(self):
         ast = Parser().parse_toplevel('def binary% 77(a b) a + b')
-        print(ast.dump())
-        #self.assertIsInstance(ast, FunctionAST)
-        #self.assertIsInstance(ast.body, NumberExprAST)
-        #self.assertEqual(ast.body.val, '2')
+        self.assertIsInstance(ast, FunctionAST)
+        proto = ast.proto
+        self.assertIsInstance(proto, PrototypeAST)
+        self.assertTrue(proto.isoperator)
+        self.assertEqual(proto.prec, 77)
+        self.assertEqual(proto.name, 'binary%')
+
+    def test_binop_relative_precedence(self):
+        # with precedence 77, % binds stronger than all existing ops
+        p = Parser()
+        p.parse_toplevel('def binary% 77(a b) a + b')
+        ast = p.parse_toplevel('a * 10 % 5 * 10')
+        self._assert_body(ast,
+            ['Binop', '*', 
+                ['Binop', '*',
+                    ['Variable', 'a'],
+                    ['Binop', '%', ['Number', '10'], ['Number', '5']]],
+                ['Number', '10']])
+    
+        ast = p.parse_toplevel('a % 20 * 5')
+        self._assert_body(ast,
+            ['Binop', '*',
+                ['Binop', '%', ['Variable', 'a'], ['Number', '20']],
+                ['Number', '5']])
+
+    def test_binary_op_no_prec(self):
+        ast = Parser().parse_toplevel('def binary $(a b) a + b')
+        self.assertIsInstance(ast, FunctionAST)
+        proto = ast.proto
+        self.assertIsInstance(proto, PrototypeAST)
+        self.assertTrue(proto.isoperator)
+        self.assertEqual(proto.prec, 30)
+        self.assertEqual(proto.name, 'binary$')
+
+
+class TestEvaluator(unittest.TestCase):
+    def test_custom_binop(self):
+        e = KaleidoscopeEvaluator()
+        e.evaluate('def binary %(a b) a - b')
+        self.assertEqual(e.evaluate('10 % 5'), 5)
+        self.assertEqual(e.evaluate('100 % 5.5'), 94.5)
+
 
 if __name__ == '__main__':
     p = Parser()
