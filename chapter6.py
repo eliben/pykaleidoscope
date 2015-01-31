@@ -244,6 +244,8 @@ class FunctionAST(ASTNode):
 class ParseError(Exception): pass
 
 
+# TODO: once done with chapter6 update the interface of the parser in all
+# chapters to conform to this one
 class Parser(object):
     def __init__(self):
         pass
@@ -533,7 +535,7 @@ class LLVMCodeGenerator(object):
         else:
             # Note one of predefined operator, so it must be a user-defined one.
             # Emit a call to it.
-            func = self.func_symtab['binary{0}'.format(node.op)]
+            func = self.module.get_global('binary{0}'.format(node.op))
             return self.builder.call(func, [lhs, rhs], 'binop')
 
     def _codegen_IfExprAST(self, node):
@@ -811,6 +813,9 @@ if __name__ == '__main__':
     p = Parser()
     print(p.parse_toplevel('def binary% 77(a b) a + b').dump())
     print(p.parse_toplevel('def fra(x t) x % t').dump())
-    #kalei = KaleidoscopeEvaluator()
+    kalei = KaleidoscopeEvaluator()
+    kalei.evaluate('def binary% 77(a b) a + b')
+    print(kalei.evaluate('5 % 10', optimize=False, llvmdump=True))
+
     #kalei.evaluate('def foo(a b) for x = 65, x < a, b in putchard(x)')
     #print(kalei.evaluate('foo(79, 1)', optimize=True, llvmdump=True))
