@@ -1,4 +1,4 @@
-# Chapter 5 - Extending the language: User-define Operators
+# Chapter 5 - Extending the language: User-defined Operators
 
 from collections import namedtuple
 from ctypes import CFUNCTYPE, c_double
@@ -120,6 +120,18 @@ class VariableExprAST(ExprAST):
     def dump(self, indent=0):
         return '{0}{1}[{2}]'.format(
             ' ' * indent, self.__class__.__name__, self.name)
+
+
+class UnaryExprAST(ExprAST):
+    def __init__(self, op, operand):
+        self.op = op
+        self.operand = operand
+        
+    def dump(self, indent=0):
+        s = '{0}{1}[{2}]\n'.format(
+            ' ' * indent, self.__class__.__name__, self.op)
+        s += self.operand.dump(indent + 2)
+        return s
 
 
 class BinaryExprAST(ExprAST):
@@ -381,6 +393,20 @@ class Parser(object):
         body = self._parse_expression()
         return ForExprAST(id_name, start_expr, end_expr, step_expr, body)
         
+    # unary
+    #   ::= primary
+    #   ::= <op> unary
+    def _parse_unary(self):
+        # no unary operator before a primary
+        if (not self.cur_tok.kind == TokenKind.OPERATOR or
+            self.cur_tok.value in ('(', ',')):
+            return self._parse_primary()
+
+        # unary operator
+        op = self.cur_tok.value
+        self._get_next_token()
+        return UnaryExprAST(op, self._parse_unary())
+        
     # binoprhs ::= (<binop> primary)*
     def _parse_binop_rhs(self, expr_prec, lhs):
         """Parse the right-hand-side of a binary expression.
@@ -399,7 +425,7 @@ class Parser(object):
                 return lhs
             op = self.cur_tok.value
             self._get_next_token()  # consume the operator
-            rhs = self._parse_primary()
+            rhs = self._parse_unary()
 
             next_prec = self._cur_tok_precedence()
             # There are three options:
@@ -416,7 +442,7 @@ class Parser(object):
 
     # expression ::= primary binoprhs
     def _parse_expression(self):
-        lhs = self._parse_primary()
+        lhs = self._parse_unary()
         # Start with precedence 0 because we want to bind any operator to the
         # expression at this point.
         return self._parse_binop_rhs(0, lhs)
@@ -428,6 +454,12 @@ class Parser(object):
         prec = 30
         if self.cur_tok.kind == TokenKind.IDENTIFIER:
             name = self.cur_tok.value
+            self._get_next_token()
+        elif self.cur_tok.kind == TokenKind.UNARY:
+            self._get_next_token()
+            if self.cur_tok.kind != TokenKind.OPERATOR:
+                raise ParseError('Expected operator after "unary"')
+            name = 'unary{0}'.format(self.cur_tok.value)
             self._get_next_token()
         elif self.cur_tok.kind == TokenKind.BINARY:
             self._get_next_token()
@@ -456,8 +488,11 @@ class Parser(object):
 
         if name.startswith('binary') and len(argnames) != 2:
             raise ParseError('Expected binary operator to have 2 operands')
+        elif name.startswith('unary') and len(argnames) != 1:
+            raise ParseError('Expected unary operator to have one operand')
 
-        return PrototypeAST(name, argnames, name.startswith('binary'), prec)
+        return PrototypeAST(
+            name, argnames, name.startswith(('unary', 'binary')), prec)
 
     # external ::= 'extern' prototype
     def _parse_external(self):
@@ -809,6 +844,8 @@ class TestParser(unittest.TestCase):
             return ['Number', ast.val]
         elif isinstance(ast, VariableExprAST):
             return ['Variable', ast.name]
+        elif isinstance(ast, UnaryExprAST):
+            return ['Unary', ast.op, self._flatten(ast.operand)]
         elif isinstance(ast, BinaryExprAST):
             return ['Binop', ast.op,
                     self._flatten(ast.lhs), self._flatten(ast.rhs)]
@@ -827,6 +864,23 @@ class TestParser(unittest.TestCase):
         """Assert the flattened body of the given toplevel function"""
         self.assertIsInstance(toplevel, FunctionAST)
         self.assertEqual(self._flatten(toplevel.body), expected)
+
+    def test_unary(self):
+        p = Parser()
+        ast = p.parse_toplevel('def unary!(x) 0 - x')
+        self.assertIsInstance(ast, FunctionAST)
+        proto = ast.proto
+        self.assertIsInstance(proto, PrototypeAST)
+        self.assertTrue(proto.isoperator)
+        self.assertEqual(proto.name, 'unary!')
+
+        ast = p.parse_toplevel('!a + !b - !!c')
+        self._assert_body(ast,
+            ['Binop', '-',
+                ['Binop', '+',
+                    ['Unary', '!', ['Variable', 'a']],
+                    ['Unary', '!', ['Variable', 'b']]],
+                ['Unary', '!', ['Unary', '!', ['Variable', 'c']]]])
 
     def test_binary_op_with_prec(self):
         ast = Parser().parse_toplevel('def binary% 77(a b) a + b')
