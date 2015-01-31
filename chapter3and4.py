@@ -172,13 +172,22 @@ class ParseError(Exception): pass
 
 
 class Parser(object):
-    def __init__(self, buf):
+    """Parser for the Kaleidoscope language.
+    
+    After the parser is created, invoke parse_toplevel multiple times to parse
+    Kaleidoscope source into an AST.
+    """
+    def __init__(self):
+        self.token_generator = None
+        self.cur_tok = None
+
+    # toplevel ::= definition | external | expression | ';'
+    def parse_toplevel(self, buf):
+        """Given a string, returns an AST node representing it."""
         self.token_generator = Lexer(buf).tokens()
         self.cur_tok = None
         self._get_next_token()
 
-    # toplevel ::= definition | external | expression | ';'
-    def parse_toplevel(self):
         if self.cur_tok.kind == TokenKind.EXTERN:
             return self._parse_external()
         elif self.cur_tok.kind == TokenKind.DEF:
@@ -472,7 +481,7 @@ class KaleidoscopeEvaluator(object):
         value for toplevel expressions.
         """
         # Parse the given code and generate code from it
-        ast = Parser(codestr).parse_toplevel()
+        ast = Parser().parse_toplevel(codestr)
         self.codegen.generate_code(ast)
 
         if llvmdump:

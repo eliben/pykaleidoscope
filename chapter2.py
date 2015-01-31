@@ -155,13 +155,22 @@ class ParseError(Exception): pass
 
 
 class Parser(object):
-    def __init__(self, buf):
+    """Parser for the Kaleidoscope language.
+    
+    After the parser is created, invoke parse_toplevel multiple times to parse
+    Kaleidoscope source into an AST.
+    """
+    def __init__(self):
+        self.token_generator = None
+        self.cur_tok = None
+
+    # toplevel ::= definition | external | expression | ';'
+    def parse_toplevel(self, buf):
+        """Given a string, returns an AST node representing it."""
         self.token_generator = Lexer(buf).tokens()
         self.cur_tok = None
         self._get_next_token()
 
-    # toplevel ::= definition | external | expression | ';'
-    def parse_toplevel(self):
         if self.cur_tok.kind == TokenKind.EXTERN:
             return self._parse_external()
         elif self.cur_tok.kind == TokenKind.DEF:
@@ -393,28 +402,27 @@ class TestParser(unittest.TestCase):
         self.assertEqual(self._flatten(toplevel.body), expected)
 
     def test_basic(self):
-        p = Parser('2')
-        ast = p.parse_toplevel()
+        ast = Parser().parse_toplevel('2')
         self.assertIsInstance(ast, FunctionAST)
         self.assertIsInstance(ast.body, NumberExprAST)
         self.assertEqual(ast.body.val, '2')
 
     def test_basic_with_flattening(self):
-        ast = Parser('2').parse_toplevel()
+        ast = Parser().parse_toplevel('2')
         self._assert_body(ast, ['Number', '2'])
 
-        ast = Parser('foobar').parse_toplevel()
+        ast = Parser().parse_toplevel('foobar')
         self._assert_body(ast, ['Variable', 'foobar'])
 
     def test_expr_singleprec(self):
-        ast = Parser('2+ 3-4').parse_toplevel()
+        ast = Parser().parse_toplevel('2+ 3-4')
         self._assert_body(ast,
             ['Binop',
                 '-', ['Binop', '+', ['Number', '2'], ['Number', '3']],
                 ['Number', '4']])
 
     def test_expr_multiprec(self):
-        ast = Parser('2+3*4-9').parse_toplevel()
+        ast = Parser().parse_toplevel('2+3*4-9')
         self._assert_body(ast,
             ['Binop', '-',
                 ['Binop', '+',
@@ -423,7 +431,7 @@ class TestParser(unittest.TestCase):
                 ['Number', '9']])
 
     def test_expr_parens(self):
-        ast = Parser('2*(3-4)*7').parse_toplevel()
+        ast = Parser().parse_toplevel('2*(3-4)*7')
         self._assert_body(ast,
             ['Binop', '*',
                 ['Binop', '*',
@@ -432,15 +440,15 @@ class TestParser(unittest.TestCase):
                 ['Number', '7']])
 
     def test_externals(self):
-        ast = Parser('extern sin(arg)').parse_toplevel()
+        ast = Parser().parse_toplevel('extern sin(arg)')
         self.assertEqual(self._flatten(ast), ['Proto', 'sin', 'arg'])
 
-        ast = Parser('extern Foobar(nom denom abom)').parse_toplevel()
+        ast = Parser().parse_toplevel('extern Foobar(nom denom abom)')
         self.assertEqual(self._flatten(ast),
             ['Proto', 'Foobar', 'nom denom abom'])
 
     def test_funcdef(self):
-        ast = Parser('def foo(x) 1 + bar(x)').parse_toplevel()
+        ast = Parser().parse_toplevel('def foo(x) 1 + bar(x)')
         self.assertEqual(self._flatten(ast),
             ['Function', ['Proto', 'foo', 'x'],
                 ['Binop', '+',
@@ -449,5 +457,5 @@ class TestParser(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    p = Parser('def bina(a b) a + b')
-    print(p.parse_toplevel().dump())
+    p = Parser()
+    print(p.parse_toplevel('def bina(a b) a + b').dump())

@@ -256,15 +256,19 @@ class FunctionAST(ASTNode):
 class ParseError(Exception): pass
 
 
-# TODO: once done with chapter6 update the interface of the parser in all
-# chapters to conform to this one
 class Parser(object):
+    """Parser for the Kaleidoscope language.
+    
+    After the parser is created, invoke parse_toplevel multiple times to parse
+    Kaleidoscope source into an AST.
+    """
     def __init__(self):
         self.token_generator = None
         self.cur_tok = None
 
     # toplevel ::= definition | external | expression | ';'
     def parse_toplevel(self, buf):
+        """Given a string, returns an AST node representing it."""
         self.token_generator = Lexer(buf).tokens()
         self.cur_tok = None
         self._get_next_token()
