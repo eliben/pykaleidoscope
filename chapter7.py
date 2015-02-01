@@ -23,6 +23,7 @@ class TokenKind(Enum):
     IN = -11
     BINARY = -12
     UNARY = -13
+    VAR = -14
 
 
 Token = namedtuple('Token', 'kind value')
@@ -51,6 +52,7 @@ class Lexer(object):
             'in':       TokenKind.IN,
             'binary':   TokenKind.BINARY,
             'unary':    TokenKind.UNARY,
+            'var':      TokenKind.VAR,
         }
 
     def tokens(self):
@@ -120,6 +122,26 @@ class VariableExprAST(ExprAST):
     def dump(self, indent=0):
         return '{0}{1}[{2}]'.format(
             ' ' * indent, self.__class__.__name__, self.name)
+
+
+class VarExprAST(ExprAST):
+    def __init__(self, vars, body):
+        # vars is a sequence of (name, init) pairs
+        self.vars = vars
+        self.body = body
+
+    def dump(self, indent=0):
+        prefix = ' ' * indent
+        s = '{0}{1}\n'.format(prefix, self.__class__.__name__)
+        for name, init in self.vars:
+            s += '{0} {1}'.format(prefix, name)
+            if init is None:
+                s += '\n'
+            else:
+                s += '=\n' + init.dump(indent+2) + '\n'
+        s += '{0} Body:\n'.format(prefix)
+        s += self.body.dump(indent + 2)
+        return s
 
 
 class UnaryExprAST(ExprAST):
@@ -298,7 +320,7 @@ class Parser(object):
             raise ParseError('Expected "{0}"'.format(expected_kind))
         self._get_next_token()
 
-    _precedence_map = {'<': 10, '+': 20, '-': 20, '*': 40}
+    _precedence_map = {'=': 2, '<': 10, '+': 20, '-': 20, '*': 40}
 
     def _cur_tok_precedence(self):
         """Get the operator precedence of the current token."""
@@ -364,6 +386,8 @@ class Parser(object):
             return self._parse_if_expr()
         elif self.cur_tok.kind == TokenKind.FOR:
             return self._parse_for_expr()
+        elif self.cur_tok.kind == TokenKind.VAR:
+            return self._parse_var_expr()
         else:
             raise ParseError('Unknown token when expecting an expression')
 
@@ -396,6 +420,38 @@ class Parser(object):
         self._match(TokenKind.IN)
         body = self._parse_expression()
         return ForExprAST(id_name, start_expr, end_expr, step_expr, body)
+
+    # varexpr ::= 'var' identifier ('=' expr)?
+    #                   (',' identifier ('=' expr)?)* 'in' expr
+    def _parse_var_expr(self):
+        self._get_next_token()  # consume the 'var'
+        vars = []
+
+        # At least one variable name is required
+        if self.cur_tok.kind != TokenKind.IDENTIFIER:
+            raise ParseError('expected identifier after "var"')
+        while True:
+            name = self.cur_tok.value
+            self._get_next_token()  # consume the identifier
+
+            # Parse the optional initializer
+            if self._cur_tok_is_operator('='):
+                self._get_next_token()  # consume the '='
+                init = self._parse_expression()
+            else:
+                init = None
+            vars.append((name, init))
+
+            # If there are no more vars in this declaration, we're done.
+            if not self._cur_tok_is_operator(','):
+                break
+            self._get_next_token()  # consume the ','
+            if self.cur_tok.kind != TokenKind.IDENTIFIER:
+                raise ParseError('expected identifier in "var" after ","')
+
+        self._match(TokenKind.IN)
+        body = self._parse_expression()
+        return VarExprAST(vars, body)
 
     # unary
     #   ::= primary
@@ -572,6 +628,16 @@ class LLVMCodeGenerator(object):
         return self.builder.call(func, [operand], 'unop')
 
     def _codegen_BinaryExprAST(self, node):
+        # Assignment is handled specially because it doesn't follow the general
+        # recipe of binary ops.
+        if node.op == '=':
+            if not isinstance(node.lhs, VariableExprAST):
+                raise CodegenError('lhs of "=" must be a variable')
+            var_addr = self.func_symtab[node.lhs.name]
+            rhs_val = self._codegen(node.rhs) 
+            self.builder.store(rhs_val, var_addr)
+            return rhs_val
+
         lhs = self._codegen(node.lhs)
         rhs = self._codegen(node.rhs)
 
@@ -873,6 +939,9 @@ class TestParser(unittest.TestCase):
         elif isinstance(ast, BinaryExprAST):
             return ['Binop', ast.op,
                     self._flatten(ast.lhs), self._flatten(ast.rhs)]
+        elif isinstance(ast, VarExprAST):
+            vars = [[name, self._flatten(init)] for name, init in ast.vars]
+            return ['Var', vars, self._flatten(ast.body)]
         elif isinstance(ast, CallExprAST):
             args = [self._flatten(arg) for arg in ast.args]
             return ['Call', ast.callee, args]
@@ -889,14 +958,23 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(toplevel, FunctionAST)
         self.assertEqual(self._flatten(toplevel.body), expected)
 
-    def test_unary(self):
+    def test_assignment(self):
         p = Parser()
-        ast = p.parse_toplevel('def unary!(x) 0 - x')
-        self.assertIsInstance(ast, FunctionAST)
-        proto = ast.proto
-        self.assertIsInstance(proto, PrototypeAST)
-        self.assertTrue(proto.isoperator)
-        self.assertEqual(proto.name, 'unary!')
+        ast = p.parse_toplevel('def text(x) x = 5')
+        self._assert_body(ast,
+            ['Binop', '=', ['Variable', 'x'], ['Number', '5']])
+
+    def test_varexpr(self):
+        p = Parser()
+        ast = p.parse_toplevel('def foo(x y) var t = 1 in y')
+        self._assert_body(ast,
+             ['Var', [['t', ['Number', '1']]], ['Variable', 'y']])
+        ast = p.parse_toplevel('def foo(x y) var t = x, p = y + 1 in y')
+        self._assert_body(ast,
+            ['Var',
+                [['t', ['Variable', 'x']],
+                 ['p', ['Binop', '+', ['Variable', 'y'], ['Number', '1']]]],
+                ['Variable', 'y']])
 
 
 class TestEvaluator(unittest.TestCase):
@@ -912,6 +990,9 @@ if __name__ == '__main__':
     #print(p.parse_toplevel('def binary% 77(a b) a + b').dump())
     #print(p.parse_toplevel('def fra(x t) x % t').dump())
     kalei = KaleidoscopeEvaluator()
-    kalei.evaluate('def foo(t) for i = 65, i < t, 1 in putchard(i)')
-    kalei.evaluate('foo(80)', llvmdump=True)
+    #kalei.evaluate('def foo(t) for i = 65, i < t, 1 in putchard(i)')
+    kalei.evaluate('def binary: 1 (x y) y')
+    kalei.evaluate('def test(x) putchard(x) : x = 65 : putchard(x) : x = 66 : putchard(x)')
+    kalei.evaluate('test(77)')
+    #kalei.evaluate('foo(80)', llvmdump=True)
     #print(kalei.evaluate('5 % 10', optimize=False, llvmdump=True))
