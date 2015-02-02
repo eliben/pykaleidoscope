@@ -715,8 +715,8 @@ class LLVMCodeGenerator(object):
         #   curvar = load var
         #   nextvariable = curvar + step
         #   store nextvar -> var
-        #   br endcond, loop, endloop
-        # outloop:
+        #   br endcond, loop, afterloop
+        # afterloop:
 
         # Create an alloca for the induction var. Save and restore location of
         # our builder because _create_entry_block_alloca may modify it (llvmlite
@@ -775,6 +775,42 @@ class LLVMCodeGenerator(object):
 
         # The 'for' expression always returns 0
         return self.builder.constant(ir.DoubleType(), 0.0)
+
+    def _codegen_VarExprAST(self, node):
+        old_bindings = []
+
+        for name, init in node.vars:
+            # Emit the initializer before adding the variable to scope. This
+            # prefents the initializer from referencing the variable itself.
+            if init is not None:
+                init_val = self._codegen(init)
+            else:
+                init_val = self.builder.constant(ir.DoubleType(), 0.0)
+
+            # Create an alloca for the induction var and store the init value to
+            # it. Save and restore location of our builder because
+            # _create_entry_block_alloca may modify it (llvmlite issue #44).
+            saved_block = self.builder.block
+            var_addr = self._create_entry_block_alloca(name)
+            self.builder.position_at_end(saved_block)
+            self.builder.store(init_val, var_addr)
+
+            # We're going to shadow this name in the symbol table now; remember
+            # what to restore.
+            old_bindings.append(self.func_symtab.get(name))
+            self.func_symtab[name] = var_addr
+
+        # Now all the vars are in scope. Codegen the body.
+        body_val = self._codegen(node.body)
+
+        # Restore the old bindings.
+        for i, (name, _) in enumerate(node.vars):
+            if old_bindings[i] is not None:
+                self.func_symtab[name] = old_bindings[i]
+            else:
+                del self.func_symtab[name]
+
+        return body_val
 
     def _codegen_CallExprAST(self, node):
         callee_func = self.module.globals.get(node.callee, None)
@@ -978,21 +1014,45 @@ class TestParser(unittest.TestCase):
 
 
 class TestEvaluator(unittest.TestCase):
-    def test_custom_binop(self):
+    def test_var_expr(self):
         e = KaleidoscopeEvaluator()
-        e.evaluate('def binary %(a b) a - b')
-        self.assertEqual(e.evaluate('10 % 5'), 5)
-        self.assertEqual(e.evaluate('100 % 5.5'), 94.5)
+        e.evaluate('''
+            def foo(x y z)
+                var s1 = x + y, s2 = z + y in
+                    s1 * s2
+            ''')
+        self.assertEqual(e.evaluate('foo(1, 2, 3)'), 15)
+
+        e = KaleidoscopeEvaluator()
+        e.evaluate('def binary : 1 (x y) y')
+        e.evaluate('''
+            def foo(step)
+                var accum in
+                    (for i = 0, i < 10, step in
+                        accum = accum + i) : accum
+            ''')
+        # Note that Kaleidoscope's 'for' loop executes the last iteration even
+        # when the condition is no longer fulfilled after the step is done.
+        # 0 + 2 + 4 + 6 + 8 + 10
+        self.assertEqual(e.evaluate('foo(2)'), 30)
+
+    def test_nested_var_exprs(self):
+        e = KaleidoscopeEvaluator()
+        e.evaluate('''
+            def foo(x y z)
+                var s1 = x + y, s2 = z + y in
+                    var s3 = s1 * s2 in
+                        s3 * 100
+            ''')
+        self.assertEqual(e.evaluate('foo(1, 2, 3)'), 1500)
 
 
 if __name__ == '__main__':
-    #p = Parser()
-    #print(p.parse_toplevel('def binary% 77(a b) a + b').dump())
-    #print(p.parse_toplevel('def fra(x t) x % t').dump())
     kalei = KaleidoscopeEvaluator()
-    #kalei.evaluate('def foo(t) for i = 65, i < t, 1 in putchard(i)')
     kalei.evaluate('def binary: 1 (x y) y')
-    kalei.evaluate('def test(x) putchard(x) : x = 65 : putchard(x) : x = 66 : putchard(x)')
-    kalei.evaluate('test(77)')
-    #kalei.evaluate('foo(80)', llvmdump=True)
-    #print(kalei.evaluate('5 % 10', optimize=False, llvmdump=True))
+    kalei.evaluate('''
+        def foo(x y z)
+            var s1 = x + y, s2 = z + y in
+                s1 * s2
+        ''')
+    print(kalei.evaluate('foo(1, 2, 3)'))
