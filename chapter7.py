@@ -280,7 +280,7 @@ class ParseError(Exception): pass
 
 class Parser(object):
     """Parser for the Kaleidoscope language.
-    
+
     After the parser is created, invoke parse_toplevel multiple times to parse
     Kaleidoscope source into an AST.
     """
@@ -599,7 +599,7 @@ class LLVMCodeGenerator(object):
     def generate_code(self, node):
         assert isinstance(node, (PrototypeAST, FunctionAST))
         return self._codegen(node)
-        
+
     def _create_entry_block_alloca(self, name):
         """Create an alloca in the entry BB of the current function."""
         builder = ir.IRBuilder()
@@ -634,7 +634,7 @@ class LLVMCodeGenerator(object):
             if not isinstance(node.lhs, VariableExprAST):
                 raise CodegenError('lhs of "=" must be a variable')
             var_addr = self.func_symtab[node.lhs.name]
-            rhs_val = self._codegen(node.rhs) 
+            rhs_val = self._codegen(node.rhs)
             self.builder.store(rhs_val, var_addr)
             return rhs_val
 
@@ -1045,6 +1045,20 @@ class TestEvaluator(unittest.TestCase):
                         s3 * 100
             ''')
         self.assertEqual(e.evaluate('foo(1, 2, 3)'), 1500)
+
+    def test_assignments(self):
+        e = KaleidoscopeEvaluator()
+        e.evaluate('def binary : 1 (x y) y')
+        e.evaluate('''
+            def foo(a b)
+                var s, p, r in
+                   s = a + b :
+                   p = a * b :
+                   r = s + 100 * p :
+                   r
+            ''')
+        self.assertEqual(e.evaluate('foo(2, 3)'), 605)
+        self.assertEqual(e.evaluate('foo(10, 20)'), 20030)
 
 
 if __name__ == '__main__':
