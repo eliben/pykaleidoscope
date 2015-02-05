@@ -7,6 +7,7 @@ from enum import Enum
 import llvmlite.ir as ir
 import llvmlite.binding as llvm
 
+
 # Each token is a tuple of kind and value. kind is one of the enumeration values
 # in TokenKind. value is the textual value of the token in the input.
 class TokenKind(Enum):
@@ -258,7 +259,7 @@ class ParseError(Exception): pass
 
 class Parser(object):
     """Parser for the Kaleidoscope language.
-    
+
     After the parser is created, invoke parse_toplevel multiple times to parse
     Kaleidoscope source into an AST.
     """
@@ -954,6 +955,7 @@ class TestEvaluator(unittest.TestCase):
 
 
 def generate_mandelbrot():
+    # Implements the Mandelbrot example described in the tutorial.
     e = KaleidoscopeEvaluator()
     e.evaluate('def unary- (v) 0 - v')
     e.evaluate('def binary> 10 (lhs rhs) rhs < lhs')
@@ -1003,9 +1005,3 @@ def generate_mandelbrot():
 
 if __name__ == '__main__':
     generate_mandelbrot()
-    #p = Parser()
-    #print(p.parse_toplevel('def binary% 77(a b) a + b').dump())
-    #print(p.parse_toplevel('def fra(x t) x % t').dump())
-    #kalei = KaleidoscopeEvaluator()
-    #kalei.evaluate('def binary% 77(a b) a + b')
-    #print(kalei.evaluate('5 % 10', optimize=False, llvmdump=True))

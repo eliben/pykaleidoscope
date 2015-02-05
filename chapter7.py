@@ -7,6 +7,7 @@ from enum import Enum
 import llvmlite.ir as ir
 import llvmlite.binding as llvm
 
+
 # Each token is a tuple of kind and value. kind is one of the enumeration values
 # in TokenKind. value is the textual value of the token in the input.
 class TokenKind(Enum):
@@ -1062,6 +1063,7 @@ class TestEvaluator(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    # Evaluate some code.
     kalei = KaleidoscopeEvaluator()
     kalei.evaluate('def binary: 1 (x y) y')
     kalei.evaluate('''
