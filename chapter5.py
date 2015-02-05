@@ -7,6 +7,7 @@ from enum import Enum
 import llvmlite.ir as ir
 import llvmlite.binding as llvm
 
+
 # Each token is a tuple of kind and value. kind is one of the enumeration values
 # in TokenKind. value is the textual value of the token in the input.
 class TokenKind(Enum):
@@ -213,7 +214,7 @@ class FunctionAST(ASTNode):
 
     def is_anonymous(self):
         return self.proto.name.startswith('_anon')
-        
+
     def dump(self, indent=0):
         s = '{0}{1}[{2}]\n'.format(
             ' ' * indent, self.__class__.__name__, self.proto.dump())
@@ -226,7 +227,7 @@ class ParseError(Exception): pass
 
 class Parser(object):
     """Parser for the Kaleidoscope language.
-    
+
     After the parser is created, invoke parse_toplevel multiple times to parse
     Kaleidoscope source into an AST.
     """
@@ -344,7 +345,7 @@ class Parser(object):
         self._match(TokenKind.ELSE)
         else_expr = self._parse_expression()
         return IfExprAST(cond_expr, then_expr, else_expr)
-        
+
     # forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expr
     def _parse_for_expr(self):
         self._get_next_token()  # consume the 'for'
@@ -364,7 +365,7 @@ class Parser(object):
         self._match(TokenKind.IN)
         body = self._parse_expression()
         return ForExprAST(id_name, start_expr, end_expr, step_expr, body)
-        
+
     # binoprhs ::= (<binop> primary)*
     def _parse_binop_rhs(self, expr_prec, lhs):
         """Parse the right-hand-side of a binary expression.
@@ -514,7 +515,7 @@ class LLVMCodeGenerator(object):
         self.builder.position_at_start(then_bb)
         then_val = self._codegen(node.then_expr)
         self.builder.branch(merge_bb)
-        
+
         # Emission of then_val could have modified the current basic block. To
         # properly set up the PHI, remember which block the 'then' part ends in.
         then_bb = self.builder.block
@@ -532,7 +533,7 @@ class LLVMCodeGenerator(object):
         phi.add_incoming(then_val, then_bb)
         phi.add_incoming(else_val, else_bb)
         return phi
-        
+
     def _codegen_ForExprAST(self, node):
         # Output this as:
         #   ...
@@ -615,7 +616,7 @@ class LLVMCodeGenerator(object):
             raise CodegenError('Call argument length mismatch', node.callee)
         call_args = [self._codegen(arg) for arg in node.args]
         return self.builder.call(callee_func, call_args, 'calltmp')
-        
+
     def _codegen_PrototypeAST(self, node):
         funcname = node.name
         # Create a function type
@@ -675,7 +676,7 @@ class KaleidoscopeEvaluator(object):
         self._add_builtins(self.codegen.module)
 
         self.target = llvm.Target.from_default_triple()
- 
+
     def evaluate(self, codestr, optimize=True, llvmdump=False):
         """Evaluate code in codestr.
 
@@ -685,7 +686,7 @@ class KaleidoscopeEvaluator(object):
         # Parse the given code and generate code from it
         ast = Parser().parse_toplevel(codestr)
         self.codegen.generate_code(ast)
-        
+
         if llvmdump:
             print('======== Unoptimized LLVM IR')
             print(str(self.codegen.module))
@@ -764,13 +765,13 @@ class TestEvaluator(unittest.TestCase):
         e = KaleidoscopeEvaluator()
         e.evaluate('''
             def foo(a b c)
-                if a < b 
+                if a < b
                     then if a < c then a * 2 else c * 2
                     else b * 2''')
         self.assertEqual(e.evaluate('foo(1, 20, 300)'), 2)
         self.assertEqual(e.evaluate('foo(10, 2, 300)'), 4)
         self.assertEqual(e.evaluate('foo(100, 2000, 30)'), 60)
-    
+
     def test_for(self):
         # For doesn't return anything, so just make sure evaluating it doesn't
         # crash.
@@ -785,6 +786,11 @@ class TestEvaluator(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    # Evaluate some code.
     kalei = KaleidoscopeEvaluator()
     kalei.evaluate('def foo(a b) for x = 65, x < a, b in putchard(x)')
-    print(kalei.evaluate('foo(79, 1)', optimize=True, llvmdump=True))
+
+    # We call these for their side effect of printing to stdout, so don't care
+    # about the return value.
+    kalei.evaluate('foo(79, 1)')
+    kalei.evaluate('putchard(10)')

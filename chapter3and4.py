@@ -559,5 +559,5 @@ if __name__ == '__main__':
     kalei = KaleidoscopeEvaluator()
     print(kalei.evaluate('def adder(a b) a + b'))
     print(kalei.evaluate('def foo(x) (1+2+x)*(x+(1+2))'))
-    print(kalei.evaluate('foo(3)', optimize=True, llvmdump=True))
+    print(kalei.evaluate('foo(3)'))
     print(kalei.evaluate('foo(adder(3, 3)*4)', optimize=True, llvmdump=True))

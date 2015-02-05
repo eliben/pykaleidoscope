@@ -20,6 +20,10 @@ that exposes LLVM to Python. For tips on setting up ``llvmlite`` with LLVM, `see
 this blog post
 <http://eli.thegreenplace.net/2015/building-and-using-llvmlite-a-basic-example/>`_.
 
+This repository is fairly complete - the whole Kaleidoscope language is
+implemented. The only thing missing is Chapter 8 - Debug Information, because
+``llvlite`` does not yet support convenient emission of debug info.
+
 How to use this code
 --------------------
 
