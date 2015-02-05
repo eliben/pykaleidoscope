@@ -1,4 +1,4 @@
-# Chapter 1&2 - Lexer and Parser
+# Chapter 1 & 2 - Lexer and Parser
 
 from collections import namedtuple
 from enum import Enum
@@ -156,7 +156,7 @@ class ParseError(Exception): pass
 
 class Parser(object):
     """Parser for the Kaleidoscope language.
-    
+
     After the parser is created, invoke parse_toplevel multiple times to parse
     Kaleidoscope source into an AST.
     """
@@ -457,5 +457,7 @@ class TestParser(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    # We just have the lexer and parser here, no code generation yet. This is
+    # just a simple way to parse Kaleidoscope expressions and dump the AST.
     p = Parser()
     print(p.parse_toplevel('def bina(a b) a + b').dump())

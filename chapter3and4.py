@@ -173,7 +173,7 @@ class ParseError(Exception): pass
 
 class Parser(object):
     """Parser for the Kaleidoscope language.
-    
+
     After the parser is created, invoke parse_toplevel multiple times to parse
     Kaleidoscope source into an AST.
     """
@@ -553,6 +553,9 @@ class TestEvaluator(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    # Example of how to define a couple of functions and then evaluate
+    # expressions involving them. A single KaleidoscopeEvaluator object retains
+    # its state across multiple calls to 'evaluate'.
     kalei = KaleidoscopeEvaluator()
     print(kalei.evaluate('def adder(a b) a + b'))
     print(kalei.evaluate('def foo(x) (1+2+x)*(x+(1+2))'))
