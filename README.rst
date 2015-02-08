@@ -29,9 +29,9 @@ How to use this code
 
 Go through the `LLVM tutorial <http://llvm.org/docs/tutorial/>`_. The files in
 this repository are named after tutorial chapters and roughly correspond to the
-C++ code presented in the tutorial. In each source file, the ``__main`` section
-of code in the bottom is a small sample of usage, and there are also unit tests
-that check a variety of cases.
+C++ code presented in the tutorial. In each source file, the ``__main__``
+section of code in the bottom is a small sample of usage, and there are also
+unit tests that check a variety of cases.
 
 Version of LLVM, Python and llvmlite
 ------------------------------------
