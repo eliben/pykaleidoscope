@@ -562,7 +562,7 @@ class LLVMCodeGenerator(object):
 
     def _codegen_UnaryExprAST(self, node):
         operand = self._codegen(node.operand)
-        func = self.module.get_global('unary{0}'.format(node.op))
+        func = self.module.globals.get('unary{0}'.format(node.op))
         return self.builder.call(func, [operand], 'unop')
 
     def _codegen_BinaryExprAST(self, node):
@@ -581,7 +581,7 @@ class LLVMCodeGenerator(object):
         else:
             # Note one of predefined operator, so it must be a user-defined one.
             # Emit a call to it.
-            func = self.module.get_global('binary{0}'.format(node.op))
+            func = self.module.globals.get('binary{0}'.format(node.op))
             return self.builder.call(func, [lhs, rhs], 'binop')
 
     def _codegen_IfExprAST(self, node):
