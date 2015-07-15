@@ -617,7 +617,7 @@ class LLVMCodeGenerator(object):
         return getattr(self, method)(node)
 
     def _codegen_NumberExprAST(self, node):
-        return self.builder.constant(ir.DoubleType(), float(node.val))
+        return ir.Constant(ir.DoubleType(), float(node.val))
 
     def _codegen_VariableExprAST(self, node):
         var_addr = self.func_symtab[node.name]
@@ -661,7 +661,7 @@ class LLVMCodeGenerator(object):
         # Emit comparison value
         cond_val = self._codegen(node.cond_expr)
         cmp = self.builder.fcmp_ordered(
-            '!=', cond_val, self.builder.constant(ir.DoubleType(), 0.0))
+            '!=', cond_val, ir.Constant(ir.DoubleType(), 0.0))
 
         # Create basic blocks to express the control flow, with a conditional
         # branch to either then_bb or else_bb depending on cmp. else_bb and
@@ -748,11 +748,11 @@ class LLVMCodeGenerator(object):
         # Compute the end condition
         endcond = self._codegen(node.end_expr)
         cmp = self.builder.fcmp_ordered(
-            '!=', endcond, self.builder.constant(ir.DoubleType(), 0.0),
+            '!=', endcond, ir.Constant(ir.DoubleType(), 0.0),
             'loopcond')
 
         if node.step_expr is None:
-            stepval = self.builder.constant(ir.DoubleType(), 1.0)
+            stepval = ir.Constant(ir.DoubleType(), 1.0)
         else:
             stepval = self._codegen(node.step_expr)
         cur_var = self.builder.load(var_addr, node.id_name)
@@ -775,7 +775,7 @@ class LLVMCodeGenerator(object):
             del self.func_symtab[node.id_name]
 
         # The 'for' expression always returns 0
-        return self.builder.constant(ir.DoubleType(), 0.0)
+        return ir.Constant(ir.DoubleType(), 0.0)
 
     def _codegen_VarExprAST(self, node):
         old_bindings = []
@@ -786,7 +786,7 @@ class LLVMCodeGenerator(object):
             if init is not None:
                 init_val = self._codegen(init)
             else:
-                init_val = self.builder.constant(ir.DoubleType(), 0.0)
+                init_val = ir.Constant(ir.DoubleType(), 0.0)
 
             # Create an alloca for the induction var and store the init value to
             # it. Save and restore location of our builder because
@@ -956,7 +956,7 @@ class KaleidoscopeEvaluator(object):
         irbuilder = ir.IRBuilder(putchard.append_basic_block('entry'))
         ival = irbuilder.fptoui(putchard.args[0], ir.IntType(32), 'intcast')
         irbuilder.call(putchar, [ival])
-        irbuilder.ret(irbuilder.constant(ir.DoubleType(), 0))
+        irbuilder.ret(ir.Constant(ir.DoubleType(), 0))
 
 
 #---- Some unit tests ----#

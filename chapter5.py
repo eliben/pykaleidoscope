@@ -474,7 +474,7 @@ class LLVMCodeGenerator(object):
         return getattr(self, method)(node)
 
     def _codegen_NumberExprAST(self, node):
-        return self.builder.constant(ir.DoubleType(), float(node.val))
+        return ir.Constant(ir.DoubleType(), float(node.val))
 
     def _codegen_VariableExprAST(self, node):
         return self.func_symtab[node.name]
@@ -499,7 +499,7 @@ class LLVMCodeGenerator(object):
         # Emit comparison value
         cond_val = self._codegen(node.cond_expr)
         cmp = self.builder.fcmp_ordered(
-            '!=', cond_val, self.builder.constant(ir.DoubleType(), 0.0))
+            '!=', cond_val, ir.Constant(ir.DoubleType(), 0.0))
 
         # Create basic blocks to express the control flow, with a conditional
         # branch to either then_bb or else_bb depending on cmp. else_bb and
@@ -574,7 +574,7 @@ class LLVMCodeGenerator(object):
         body_val = self._codegen(node.body)
 
         if node.step_expr is None:
-            stepval = self.builder.constant(ir.DoubleType(), 1.0)
+            stepval = ir.Constant(ir.DoubleType(), 1.0)
         else:
             stepval = self._codegen(node.step_expr)
         nextvar = self.builder.fadd(phi, stepval, 'nextvar')
@@ -582,7 +582,7 @@ class LLVMCodeGenerator(object):
         # Compute the end condition
         endcond = self._codegen(node.end_expr)
         cmp = self.builder.fcmp_ordered(
-            '!=', endcond, self.builder.constant(ir.DoubleType(), 0.0),
+            '!=', endcond, ir.Constant(ir.DoubleType(), 0.0),
             'loopcond')
 
         # Create the 'after loop' block and insert it
@@ -606,7 +606,7 @@ class LLVMCodeGenerator(object):
             self.func_symtab[node.id_name] = oldval
 
         # The 'for' expression always returns 0
-        return self.builder.constant(ir.DoubleType(), 0.0)
+        return ir.Constant(ir.DoubleType(), 0.0)
 
     def _codegen_CallExprAST(self, node):
         callee_func = self.module.globals.get(node.callee, None)
@@ -746,7 +746,7 @@ class KaleidoscopeEvaluator(object):
         irbuilder = ir.IRBuilder(putchard.append_basic_block('entry'))
         ival = irbuilder.fptoui(putchard.args[0], ir.IntType(32), 'intcast')
         irbuilder.call(putchar, [ival])
-        irbuilder.ret(irbuilder.constant(ir.DoubleType(), 0))
+        irbuilder.ret(ir.Constant(ir.DoubleType(), 0))
 
 
 #---- Some unit tests ----#

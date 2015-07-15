@@ -36,7 +36,7 @@ unit tests that check a variety of cases.
 Version of LLVM, Python and llvmlite
 ------------------------------------
 
-I tested with Python 3.4, LLVM 3.5 and top-of-tree ``llvmlite``.
+Last tested with Python 3.4, LLVM 3.6 and top-of-tree ``llvmlite``.
 
 Testing
 -------

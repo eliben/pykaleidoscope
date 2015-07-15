@@ -385,7 +385,7 @@ class LLVMCodeGenerator(object):
         return getattr(self, method)(node)
 
     def _codegen_NumberExprAST(self, node):
-        return self.builder.constant(ir.DoubleType(), float(node.val))
+        return ir.Constant(ir.DoubleType(), float(node.val))
 
     def _codegen_VariableExprAST(self, node):
         return self.func_symtab[node.name]
