@@ -817,8 +817,7 @@ class KaleidoscopeEvaluator(object):
                 print('======== Machine code')
                 print(target_machine.emit_assembly(llvmmod))
 
-            func = llvmmod.get_function(ast.proto.name)
-            fptr = CFUNCTYPE(c_double)(ee.get_pointer_to_function(func))
+            fptr = CFUNCTYPE(c_double)(ee.get_function_address(ast.proto.name))
             result = fptr()
             return result
 
