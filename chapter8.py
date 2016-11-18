@@ -938,6 +938,34 @@ class KaleidoscopeEvaluator(object):
             result = fptr()
             return result
 
+    def compile_to_object_code(self, filename):
+        # Compile to object code for native target.
+        #
+        # We use the small code model here,
+        # rather than the default one `jitdefault`.
+        #
+        # The reason is that only ELF format is supported
+        # under the `jitdefault` code model on Windows.
+        # However, COFF is commonly used by compilers on Windows.
+        #
+        # Please refer to https://github.com/numba/llvmlite/issues/181
+        # for more information about this issue.
+        #
+        # Also refer to
+        # http://eli.thegreenplace.net/2012/01/03/
+        # understanding-the-x64-code-models/
+        # for more information about code model.
+        target_machine = self.target.create_target_machine(
+            codemodel='small')
+
+        # Convert LLVM IR into in-memory representation
+        llvmmod = llvm.parse_assembly(str(self.codegen.module))
+
+        with open(filename, 'wb') as obj_file:
+            obj = target_machine.emit_object(llvmmod)
+            obj_file.write(obj)
+            print('Wrote ' + filename)
+
     def _add_builtins(self, module):
         # The C++ tutorial adds putchard() simply by defining it in the host C++
         # code, which is then accessible to the JIT. It doesn't work as simply
@@ -1064,10 +1092,5 @@ class TestEvaluator(unittest.TestCase):
 if __name__ == '__main__':
     # Evaluate some code.
     kalei = KaleidoscopeEvaluator()
-    kalei.evaluate('def binary: 1 (x y) y')
-    kalei.evaluate('''
-        def foo(x y z)
-            var s1 = x + y, s2 = z + y in
-                s1 * s2
-        ''')
-    print(kalei.evaluate('foo(1, 2, 3)'))
+    print(kalei.evaluate('def adder(a b) a + b'))
+    kalei.compile_to_object_code('output.o')
