@@ -1,4 +1,4 @@
-# Chapter 7 - Mutable variables
+# Chapter 8 - Compiling to Object Code
 
 from collections import namedtuple
 from ctypes import CFUNCTYPE, c_double
