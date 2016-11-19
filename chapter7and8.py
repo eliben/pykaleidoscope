@@ -938,7 +938,7 @@ class KaleidoscopeEvaluator(object):
             result = fptr()
             return result
 
-    def compile_to_object_code(self, filename):
+    def compile_to_object_code(self):
         # Compile to object code for native target.
         #
         # We use the small code model here,
@@ -961,10 +961,7 @@ class KaleidoscopeEvaluator(object):
         # Convert LLVM IR into in-memory representation
         llvmmod = llvm.parse_assembly(str(self.codegen.module))
 
-        with open(filename, 'wb') as obj_file:
-            obj = target_machine.emit_object(llvmmod)
-            obj_file.write(obj)
-            print('Wrote ' + filename)
+        return target_machine.emit_object(llvmmod)
 
     def _add_builtins(self, module):
         # The C++ tutorial adds putchard() simply by defining it in the host C++
@@ -1099,4 +1096,11 @@ if __name__ == '__main__':
                 s1 * s2
         ''')
     print(kalei.evaluate('foo(1, 2, 3)'))
-    kalei.compile_to_object_code('output.o')
+
+    obj = kalei.compile_to_object_code()
+
+    # Output object code to a file.
+    filename = 'output.o'
+    with open(filename, 'wb') as obj_file:
+        obj_file.write(obj)
+        print('Wrote ' + filename)
