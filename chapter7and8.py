@@ -1085,6 +1085,24 @@ class TestEvaluator(unittest.TestCase):
         self.assertEqual(e.evaluate('foo(2, 3)'), 605)
         self.assertEqual(e.evaluate('foo(10, 20)'), 20030)
 
+    def test_compiling_to_object_code(self):
+        e = KaleidoscopeEvaluator()
+        e.evaluate('def adder(a b) a + b')
+        obj = e.compile_to_object_code()
+        obj_format = llvm.get_object_format()
+        
+        # Check the magic number of object format.
+        elf_magic = b'\x7fELF'
+        macho_magic = b'\xfe\xed\xfa\xcf'
+        if obj[:4] == elf_magic:
+            self.assertEqual(obj_format, 'ELF')
+        elif obj[:4] == macho_magic:
+            self.assertEqual(obj_format, 'MachO')
+        else:
+            # There are too many variations of COFF magic number.
+            # Assume all other formats are COFF.
+            self.assertEqual(obj_format, 'COFF')
+
 
 if __name__ == '__main__':
     # Evaluate some code.
