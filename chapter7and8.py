@@ -1,4 +1,4 @@
-# Chapter 7 - Mutable variables
+# Chapter 7 & 8 - Mutable variables and Compiling to Object Code
 
 from collections import namedtuple
 from ctypes import CFUNCTYPE, c_double
@@ -938,6 +938,31 @@ class KaleidoscopeEvaluator(object):
             result = fptr()
             return result
 
+    def compile_to_object_code(self):
+        # Compile to object code for native target.
+        #
+        # We use the small code model here,
+        # rather than the default one `jitdefault`.
+        #
+        # The reason is that only ELF format is supported
+        # under the `jitdefault` code model on Windows.
+        # However, COFF is commonly used by compilers on Windows.
+        #
+        # Please refer to https://github.com/numba/llvmlite/issues/181
+        # for more information about this issue.
+        #
+        # Also refer to
+        # http://eli.thegreenplace.net/2012/01/03/
+        # understanding-the-x64-code-models/
+        # for more information about code model.
+        target_machine = self.target.create_target_machine(
+            codemodel='small')
+
+        # Convert LLVM IR into in-memory representation
+        llvmmod = llvm.parse_assembly(str(self.codegen.module))
+
+        return target_machine.emit_object(llvmmod)
+
     def _add_builtins(self, module):
         # The C++ tutorial adds putchard() simply by defining it in the host C++
         # code, which is then accessible to the JIT. It doesn't work as simply
@@ -1060,6 +1085,24 @@ class TestEvaluator(unittest.TestCase):
         self.assertEqual(e.evaluate('foo(2, 3)'), 605)
         self.assertEqual(e.evaluate('foo(10, 20)'), 20030)
 
+    def test_compiling_to_object_code(self):
+        e = KaleidoscopeEvaluator()
+        e.evaluate('def adder(a b) a + b')
+        obj = e.compile_to_object_code()
+        obj_format = llvm.get_object_format()
+        
+        # Check the magic number of object format.
+        elf_magic = b'\x7fELF'
+        macho_magic = b'\xfe\xed\xfa\xcf'
+        if obj[:4] == elf_magic:
+            self.assertEqual(obj_format, 'ELF')
+        elif obj[:4] == macho_magic:
+            self.assertEqual(obj_format, 'MachO')
+        else:
+            # There are too many variations of COFF magic number.
+            # Assume all other formats are COFF.
+            self.assertEqual(obj_format, 'COFF')
+
 
 if __name__ == '__main__':
     # Evaluate some code.
@@ -1071,3 +1114,11 @@ if __name__ == '__main__':
                 s1 * s2
         ''')
     print(kalei.evaluate('foo(1, 2, 3)'))
+
+    obj = kalei.compile_to_object_code()
+
+    # Output object code to a file.
+    filename = 'output.o'
+    with open(filename, 'wb') as obj_file:
+        obj_file.write(obj)
+        print('Wrote ' + filename)

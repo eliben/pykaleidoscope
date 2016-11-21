@@ -19,8 +19,8 @@ into Python, using the `llvmlite <https://github.com/numba/llvmlite>`_ package
 that exposes LLVM to Python.
 
 This repository is fairly complete - the whole Kaleidoscope language is
-implemented. The only thing missing is Chapter 8 - Debug Information, because
-``llvlite`` does not yet support convenient emission of debug info.
+implemented. The only thing missing is Chapter 9 - Adding Debug Information,
+because ``llvmlite`` does not yet support convenient emission of debug info.
 
 How to use this code
 --------------------
