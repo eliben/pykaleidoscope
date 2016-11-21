@@ -41,7 +41,7 @@ Some of the files have unit test classes in them. To run all unit tests::
 Version of LLVM, Python and llvmlite
 ------------------------------------
 
-Last tested with Python 3.4, LLVM 3.7 and top-of-tree ``llvmlite``.
+Last tested with Python 3.4, LLVM 3.8 and top-of-tree ``llvmlite``.
 
 Setting up llvmlite
 -------------------
@@ -80,6 +80,6 @@ untarred LLVM binary release. The reasons for this complication are:
    ``-flto`` when compiling. The ``*_FLTO_FLAGS`` settings are made to avoid
    that.
 
-Note that these directions work at the time of writing (last updated: Mar 15,
+Note that these directions work at the time of writing (last updated: Nov 21,
 2016) and may change with new versions of LLVM and/or llvmlite. I'll try to keep
 up but feel free to open issues if anything needs to be done differently.
