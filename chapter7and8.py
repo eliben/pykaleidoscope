@@ -939,28 +939,24 @@ class KaleidoscopeEvaluator(object):
             return result
 
     def compile_to_object_code(self):
-        # Compile to object code for native target.
+        """Compile previously evaluated code into an object file.
+
+        The object file is created for the native target, and its contents are
+        returned as a bytes object.
+        """
+        # We use the small code model here, rather than the default one
+        # `jitdefault`.
         #
-        # We use the small code model here,
-        # rather than the default one `jitdefault`.
-        #
-        # The reason is that only ELF format is supported
-        # under the `jitdefault` code model on Windows.
-        # However, COFF is commonly used by compilers on Windows.
+        # The reason is that only ELF format is supported under the `jitdefault`
+        # code model on Windows. However, COFF is commonly used by compilers on
+        # Windows.
         #
         # Please refer to https://github.com/numba/llvmlite/issues/181
         # for more information about this issue.
-        #
-        # Also refer to
-        # http://eli.thegreenplace.net/2012/01/03/
-        # understanding-the-x64-code-models/
-        # for more information about code model.
-        target_machine = self.target.create_target_machine(
-            codemodel='small')
+        target_machine = self.target.create_target_machine(codemodel='small')
 
         # Convert LLVM IR into in-memory representation
         llvmmod = llvm.parse_assembly(str(self.codegen.module))
-
         return target_machine.emit_object(llvmmod)
 
     def _add_builtins(self, module):
