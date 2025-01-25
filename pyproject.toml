@@ -7,3 +7,11 @@ requires-python = ">=3.11"
 dependencies = [
     "llvmlite>=0.44.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.4",
+]

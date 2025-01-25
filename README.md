@@ -4,6 +4,14 @@ title: Pykaleidoscope
 
 # What is this?
 
+TODO note: the majority of the Python code in this repository was written
+in 2015, so it may not reflect the very latest modern practices. However,
+it was designed to be simple and readable, and has been tested to work
+well on the latest Python versions as of 2025.
+
+    uv run pytest <filename.py>
+    uv run pytest *.py
+
 LLVM comes with a [great tutorial](http://llvm.org/docs/tutorial/) that
 builds a compiler for a simple language called Kaleidoscope. The
 compiler parses Kaleidoscope into an AST, from which LLVM code is then
