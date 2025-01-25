@@ -1,0 +1,9 @@
+[project]
+name = "pykaleidoscope"
+version = "0.1.0"
+description = "LLVM Kaleidoscope tutorial using Python and llvmlite"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "llvmlite>=0.44.0",
+]
