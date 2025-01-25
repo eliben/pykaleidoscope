@@ -1,5 +1,9 @@
 # Pykaleidoscope
 
+<p align="center">
+  <img alt="Logo" src="doc/kal256.png" />
+</p>
+
 ## What is this?
 
 LLVM comes with a [great tutorial](http://llvm.org/docs/tutorial/) that
