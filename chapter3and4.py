@@ -510,7 +510,8 @@ class KaleidoscopeEvaluator(object):
                 print(str(llvmmod))
 
         # Create a MCJIT execution engine to JIT-compile the module. Note that
-        # ee takes ownership of target_machine, so it has to be recreated anew
+        # ee takes ownership of target_machine, so it should not be stored in
+        # other places (like the pass builder) and has to be recreated anew
         # each time we call create_mcjit_compiler.
         target_machine = self.target.create_target_machine()
         with llvm.create_mcjit_compiler(llvmmod, target_machine) as ee:

@@ -30,7 +30,7 @@ of debug info.
 Note: the majority of the Python code in this repository was written
 in 2015, so it may not reflect the very latest modern practices. However,
 it was designed to be simple and readable, and has been tested to work
-well on the latest Python versions as of 2025.
+well on the latest Python versions as of 2026.
 
 ## How to use this code
 
