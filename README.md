@@ -56,8 +56,8 @@ Running unit tests for a single chapter or all of them:
 This repository was updated in early 2025 to use
 [uv](https://github.com/astral-sh/uv). `llvmlite` now has binary wheels on PyPI
 that include the right LLVM shared objects; therefore, setting it up is much
-easier. When you clone this project, all you should need is to have `uv`
-installed, and then use `uv run ...` as mentioned above.
+easier. When you clone this project, you just need to have `uv`
+available, and then use `uv run ...` as mentioned above.
 
 Check out the git history of this repo for old instructions of setting up
 `llvmlite` and `LLVM` manually (back from when Pykaleidoscope was originally

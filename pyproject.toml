@@ -5,7 +5,7 @@ description = "LLVM Kaleidoscope tutorial using Python and llvmlite"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "llvmlite>=0.44.0",
+    "llvmlite>=0.47.0",
 ]
 
 [tool.pytest.ini_options]
