@@ -668,7 +668,6 @@ class KaleidoscopeEvaluator(object):
     module is JITed and the result of the expression is returned.
     """
     def __init__(self):
-        llvm.initialize()
         llvm.initialize_native_target()
         llvm.initialize_native_asmprinter()
 
@@ -703,11 +702,11 @@ class KaleidoscopeEvaluator(object):
 
         # Optimize the module
         if optimize:
-            pmb = llvm.create_pass_manager_builder()
-            pmb.opt_level = 2
-            pm = llvm.create_module_pass_manager()
-            pmb.populate(pm)
-            pm.run(llvmmod)
+            pto = llvm.create_pipeline_tuning_options(speed_level=2)
+            target_machine = self.target.create_target_machine()
+            pb = llvm.create_pass_builder(target_machine, pto)
+            mpm = pb.getModulePassManager()
+            mpm.run(llvmmod, pb)
 
             if llvmdump:
                 print('======== Optimized LLVM IR')
