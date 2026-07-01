@@ -1085,7 +1085,7 @@ class TestEvaluator(unittest.TestCase):
         e.evaluate('def adder(a b) a + b')
         obj = e.compile_to_object_code()
         obj_format = llvm.get_object_format()
-        
+
         # Check the magic number of object format.
         elf_magic = b'\x7fELF'
         macho_magic = b'\xfe\xed\xfa\xcf'
